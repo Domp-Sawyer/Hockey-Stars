@@ -463,7 +463,7 @@ function renderLB() {
             items.push(d); 
         });
         items.sort((a,b) => b.total-a.total); l.innerHTML = '';
-        items.slice(0,10).forEach((d,i) => l.innerHTML += `<div style="padding:10px; background:rgba(255,255,255,0.1); margin-bottom:5px; border-radius:10px; display:flex; justify-content:space-between;"><span>#${i+1} ${d.av} ${d.nick}</span><span style="color:#ff9000">🏆 ${d.total}</span></div>`);
+        items.slice(0,10).forEach((d,i) => l.innerHTML += `<div style="padding:10px; background:rgba(255,255,255,0.1); margin-bottom:5px; border-radius:10px; display:flex; justify-content:space-between;"><span>#${i+1} ${d.av} ${d.nick} <small style="color:rgba(255,255,255,0.5); font-size: 10px;"> [${d.id}]</small></span><span style="color:#ff9000">🏆 ${d.total}</span></div>`);
     });
     switchScr('scr-lb');
 }
