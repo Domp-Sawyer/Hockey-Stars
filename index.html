@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Hockey Stars</title>
+<title>Hockey Stars - Online</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <style>
@@ -77,12 +77,24 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
             </div>
             <div id="char-actions"></div>
             <div style="display:flex; gap:8px; margin-top:10px;">
-                <div class="btn btn-blue" onclick="startMode(1)">1 VS 1</div>
-                <div class="btn btn-red" onclick="startMode(2)">2 VS 2</div>
+                <div class="btn btn-blue" onclick="startMatchmaking(1)">1 VS 1</div>
+                <div class="btn btn-red" onclick="startMatchmaking(2)">2 VS 2</div>
             </div>
             <div class="btn btn-blue" style="width:100%; font-size:12px;" onclick="renderLB()">ТОП ИГРОКОВ</div>
         </div>
         <div class="online-tag">В СЕТИ: <span id="online-count">1</span></div>
+    </div>
+
+    <div id="scr-matchmaking" class="screen">
+        <h2 style="margin-bottom:20px;">🔍 ПОИСК СОПЕРНИКА</h2>
+        <div style="background:#000000aa; padding:20px; border-radius:20px; margin-bottom:20px; width:90%;">
+            <div>Режим: <span id="mm-mode">1 VS 1</span></div>
+            <div>Найдено игроков: <span id="mm-found">1</span> / <span id="mm-needed">2</span></div>
+            <div>Ожидание: <span id="mm-timer">0</span> сек</div>
+            <div id="mm-players-list" style="font-size:12px; margin-top:10px;"></div>
+            <div style="margin-top:15px; color:#f5d300;" id="mm-status-text">Поиск...</div>
+        </div>
+        <div class="btn btn-red" onclick="cancelMatchmaking()">ОТМЕНА</div>
     </div>
 
     <div id="scr-game" class="screen" style="padding:0;">
@@ -154,7 +166,7 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
     <div id="mod-result" class="overlay">
         <h2 id="res-title" style="font-size: 32px;">ПОБЕДА!</h2>
         <div id="res-stats" style="margin: 20px 0; font-size: 18px;"></div>
-        <div class="btn btn-blue" onclick="document.getElementById('mod-result').style.display='none'; renderLobby();">В ЛОББИ</div>
+        <div class="btn btn-blue" onclick="closeResult()">В ЛОББИ</div>
     </div>
 </div>
 
@@ -188,6 +200,13 @@ let cvs = document.getElementById('cvs'), ctx = cvs.getContext('2d');
 let cw = 1280, ch = 720, dragId = null, cornRad = 120;
 let botsFrozen = false, enemyFrozen = false;
 
+let currentMatchId = null;
+let matchRef = null;
+let playerRef = null;
+let mmInterval = null;
+let mmTimeout = null;
+let animationId = null;
+
 window.onload = () => {
     let saved = localStorage.getItem('hockey_id');
     if(saved) db.ref('accounts/' + saved).once('value', s => { if(s.exists()) login(saved, s.val()); });
@@ -214,7 +233,7 @@ function login(id, data) {
         if(s.exists()){ 
             uData=s.val(); 
             if(!uData.charCups) uData.charCups = {};
-            renderLobby(); 
+            if(!inGame) renderLobby(); 
         }
     });
 }
@@ -244,7 +263,8 @@ function tryAuth() {
 }
 
 function renderLobby() {
-    if(inGame) return; switchScr('scr-lobby');
+    if(inGame) return; 
+    switchScr('scr-lobby');
     document.getElementById('lb-av').innerText = uData.av;
     document.getElementById('lb-nick').innerText = uData.nick;
     document.getElementById('lb-id').innerText = curUser;
@@ -324,57 +344,193 @@ async function admDeletePlayer() {
 
 function admFreezeAll(s) { botsFrozen = s; closeAdmin(); }
 function admFreezeEnemy(s) { enemyFrozen = s; closeAdmin(); }
-function admEnd(win) { score[win?0:1] = 5; endMatch(); closeAdmin(); }
+function admEnd(win) { if(inGame && currentMatchId && score) { score[win?0:1] = 5; } closeAdmin(); }
 
-function sendPin(e, targetId = null) {
-    let p = pList.find(x => targetId ? x.id === targetId : x.isMe);
-    if(p) { p.activePin = e; p.pinTimer = 100; }
+// ==================== МАТЧМЕЙКИНГ ====================
+function startMatchmaking(m) {
+    if(!curUser) return;
+    mmMode = m;
+    let needed = mmMode === 1 ? 2 : 4;
+    document.getElementById('mm-mode').innerText = mmMode === 1 ? '1 VS 1' : '2 VS 2';
+    document.getElementById('mm-needed').innerText = needed;
+    document.getElementById('mm-found').innerText = 1;
+    document.getElementById('mm-timer').innerText = '0';
+    document.getElementById('mm-players-list').innerHTML = `<div>👤 ${uData.nick} (Вы)</div>`;
+    document.getElementById('mm-status-text').innerHTML = '⏳ Поиск игроков...';
+    switchScr('scr-matchmaking');
+    
+    mmStartTime = Date.now();
+    if(mmInterval) clearInterval(mmInterval);
+    mmInterval = setInterval(() => {
+        let sec = Math.floor((Date.now() - mmStartTime) / 1000);
+        document.getElementById('mm-timer').innerText = sec;
+    }, 1000);
+    
+    let queuePath = `matchmaking/${mmMode === 1 ? '1v1' : '2v2'}`;
+    let queueRef = db.ref(queuePath);
+    
+    let requestRef = queueRef.child(curUser);
+    requestRef.set({
+        uid: curUser,
+        nick: uData.nick,
+        av: uData.av,
+        started: Date.now(),
+        char: uData.selected
+    });
+    requestRef.onDisconnect().remove();
+    
+    let checkQueue = (snap) => {
+        let players = [];
+        snap.forEach(child => { if(child.key !== curUser) players.push(child.val()); });
+        document.getElementById('mm-found').innerText = players.length + 1;
+        let listHtml = `<div>👤 ${uData.nick} (Вы)</div>`;
+        players.forEach(p => { listHtml += `<div>👤 ${p.nick}</div>`; });
+        document.getElementById('mm-players-list').innerHTML = listHtml;
+        
+        if(players.length + 1 >= needed) {
+            let allPlayers = [{ uid: curUser, nick: uData.nick, av: uData.av, char: uData.selected }, ...players];
+            allPlayers = allPlayers.slice(0, needed);
+            createMatch(allPlayers, mmMode);
+            queueRef.off();
+        }
+    };
+    
+    queueRef.on('value', checkQueue);
+    
+    mmTimeout = setTimeout(() => {
+        queueRef.once('value', (snap) => {
+            let players = [];
+            snap.forEach(child => { if(child.key !== curUser) players.push(child.val()); });
+            let allPlayers = [{ uid: curUser, nick: uData.nick, av: uData.av, char: uData.selected }, ...players];
+            while(allPlayers.length < needed) allPlayers.push(null);
+            createMatch(allPlayers, mmMode);
+            queueRef.off();
+        });
+    }, 10000);
 }
 
-window.addEventListener('keydown', (e) => {
-    if(!inGame) return;
-    if(e.key >= '1' && e.key <= '6') sendPin(PINS[parseInt(e.key)-1]);
-});
-
-function getPos(e) { let r=cvs.getBoundingClientRect(); let t=e.touches?e.touches[0]:e; return {x:(t.clientX-r.left)*(cw/r.width), y:(t.clientY-r.top)*(ch/r.height)}; }
-function startDrag(e) { if(!inGame) return; let p=getPos(e); let me=pList.find(x=>x.isMe); if(me && Math.hypot(me.x-p.x, me.y-p.y)<me.r*3) dragId=me.id; }
-function moveDrag(e) { if(!dragId||!inGame) return; if(e.touches) e.preventDefault(); let p=getPos(e); let me=pList.find(x=>x.id===dragId); if(me){ me.x=Math.max(me.r+45, Math.min(cw/2-10, p.x)); me.y=Math.max(me.r+45, Math.min(ch-me.r-45, p.y)); }}
-
-cvs.addEventListener('touchstart', startDrag); cvs.addEventListener('touchmove', moveDrag, {passive:false});
-cvs.addEventListener('mousedown', startDrag); window.addEventListener('mousemove', moveDrag);
-window.addEventListener('mouseup', () => dragId = null);
-
-function startMode(m) { mode=m; score=[0,0]; botsFrozen=false; enemyFrozen=false; initGame(); }
-
-function initGame() {
-    switchScr('scr-game'); document.getElementById('game-ui').style.display='block';
-    cvs.width=cw; cvs.height=ch; inGame=true; matchStartTime = Date.now();
-    let c = CHARS[uData.selected];
-    pList = [{id:1, x:200, y:ch/2, r:30*c.size, p:c.power*8, e:c.e, t:1, isMe:true, pinTimer:0, activePin:''}];
-    let bc = CHARS[Math.floor(Math.random()*CHARS.length)];
-    pList.push({id:2, x:1080, y:ch/2, r:30*bc.size, p:bc.power*6, e:bc.e, t:2, isMe:false, role:'striker', stuckTicks:0, pinTimer:0});
-    if(mode===2) {
-        pList.push({id:3, x:200, y:150, r:35, p:7, e:'🦁', t:1, isMe:false, role:'gk', stuckTicks:0, pinTimer:0});
-        pList.push({id:4, x:1080, y:570, r:35, p:5.5, e:'🐯', t:2, isMe:false, role:'gk', stuckTicks:0, pinTimer:0});
-    }
-    ball = {x:cw/2, y:ch/2, vx:0, vy:0, r:28};
-    requestAnimationFrame(loop);
+function cancelMatchmaking() {
+    if(mmInterval) clearInterval(mmInterval);
+    if(mmTimeout) clearTimeout(mmTimeout);
+    let queuePath = `matchmaking/${mmMode === 1 ? '1v1' : '2v2'}`;
+    db.ref(queuePath + '/' + curUser).remove();
+    db.ref(queuePath).off();
+    renderLobby();
 }
 
-function loop() {
+function createMatch(players, modeType) {
+    if(mmInterval) clearInterval(mmInterval);
+    if(mmTimeout) clearTimeout(mmTimeout);
+    let queuePath = `matchmaking/${modeType === 1 ? '1v1' : '2v2'}`;
+    db.ref(queuePath + '/' + curUser).remove();
+    db.ref(queuePath).off();
+    
+    currentMatchId = Date.now() + '-' + Math.random().toString(36).substr(2, 6);
+    let matchData = {
+        mode: modeType,
+        players: players.map((p, idx) => ({
+            uid: p ? p.uid : null,
+            nick: p ? p.nick : 'БОТ',
+            av: p ? p.av : '🤖',
+            char: p ? p.char : Math.floor(Math.random() * CHARS.length),
+            team: idx < (modeType === 1 ? 1 : 2) ? 1 : 2,
+            isBot: !p
+        })),
+        score: [0,0],
+        ball: { x: cw/2, y: ch/2, vx: 0, vy: 0, r: 28 },
+        started: Date.now()
+    };
+    
+    db.ref(`matches/${currentMatchId}`).set(matchData).then(() => {
+        startGame(currentMatchId);
+    });
+}
+
+function startGame(matchId) {
+    matchRef = db.ref(`matches/${matchId}`);
+    matchRef.on('value', (snap) => {
+        let data = snap.val();
+        if(!data) return;
+        if(!inGame && data.players) {
+            initGameFromMatch(data);
+        } else if(inGame && data) {
+            score = data.score;
+            ball = data.ball;
+            if(data.players) {
+                data.players.forEach((p, idx) => {
+                    if(p.uid !== curUser && p.x !== undefined && pList[idx]) {
+                        pList[idx].x = p.x;
+                        pList[idx].y = p.y;
+                        if(p.activePin) {
+                            pList[idx].activePin = p.activePin;
+                            pList[idx].pinTimer = 100;
+                        }
+                    }
+                });
+            }
+        }
+    });
+}
+
+function initGameFromMatch(matchData) {
+    mode = matchData.mode;
+    score = matchData.score;
+    ball = matchData.ball;
+    pList = [];
+    
+    matchData.players.forEach((p, idx) => {
+        let charData = CHARS[p.char];
+        let isMe = p.uid === curUser;
+        let team = p.team;
+        let x = team === 1 ? 200 : 1080;
+        let y = ch/2;
+        if(mode === 2) {
+            let teamPlayers = matchData.players.filter(pl => pl.team === team);
+            let teamIdx = teamPlayers.findIndex(pl => pl.uid === p.uid);
+            if(teamIdx === 1) y = team === 1 ? 150 : 570;
+        }
+        
+        pList.push({
+            id: idx,
+            x: x, y: y,
+            r: 30 * charData.size,
+            p: charData.power * 8,
+            e: charData.e,
+            av: p.av,
+            team: team,
+            isMe: isMe,
+            isBot: p.isBot,
+            pinTimer: 0,
+            activePin: ''
+        });
+    });
+    
+    inGame = true;
+    matchStartTime = Date.now();
+    switchScr('scr-game');
+    document.getElementById('game-ui').style.display = 'block';
+    
+    playerRef = db.ref(`matches/${currentMatchId}/players/${pList.findIndex(p => p.isMe)}`);
+    
+    if(animationId) cancelAnimationFrame(animationId);
+    animationId = requestAnimationFrame(gameLoop);
+}
+
+function gameLoop() {
     if(!inGame) return;
+    
     let tr = Math.max(0, 180000 - (Date.now() - matchStartTime));
     let mins = Math.floor(tr / 60000), secs = Math.floor((tr % 60000) / 1000);
-    document.getElementById('game-timer').innerText = `0${mins}:${secs<10?'0':''}${secs}`;
+    document.getElementById('game-timer').innerText = `${mins}:${secs<10?'0':''}${secs}`;
+    
     if(tr <= 0) { endMatch(); return; }
-
-    ctx.fillStyle='#2e86de'; ctx.fillRect(0,0,cw,ch);
-    ctx.strokeStyle='#fff'; ctx.lineWidth=12;
-    ctx.beginPath(); ctx.roundRect(40, 40, cw-80, ch-80, cornRad); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cw/2,40); ctx.lineTo(cw/2,ch-40); ctx.stroke();
-    ctx.fillStyle='#fff'; ctx.fillRect(0, ch/2-140, 45, 280); ctx.fillRect(cw-45, ch/2-140, 45, 280);
-
-    ball.x+=ball.vx; ball.y+=ball.vy; ball.vx*=0.985; ball.vy*=0.985;
+    
+    // Физика (оригинальная)
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball.vx *= 0.985;
+    ball.vy *= 0.985;
+    
     let rad = cornRad+40;
     let isCorner = (ball.x < rad || ball.x > cw-rad) && (ball.y < rad || ball.y > ch-rad);
     if(isCorner) {
@@ -386,60 +542,148 @@ function loop() {
             ball.y = corner.y + Math.sin(ang)*(rad-ball.r);
             let n = {x:Math.cos(ang), y:Math.sin(ang)};
             let dot = ball.vx*n.x + ball.vy*n.y;
-            ball.vx = (ball.vx - 2*dot*n.x)*0.8; ball.vy = (ball.vy - 2*dot*n.y)*0.8;
+            ball.vx = (ball.vx - 2*dot*n.x)*0.8;
+            ball.vy = (ball.vy - 2*dot*n.y)*0.8;
         }
     } else {
-        if(ball.y < 40+ball.r || ball.y > ch-40-ball.r) { ball.vy*=-0.9; ball.y = Math.max(40+ball.r, Math.min(ch-40-ball.r, ball.y)); }
+        if(ball.y < 40+ball.r || ball.y > ch-40-ball.r) {
+            ball.vy *= -0.9;
+            ball.y = Math.max(40+ball.r, Math.min(ch-40-ball.r, ball.y));
+        }
         if(ball.x < 40+ball.r || ball.x > cw-40-ball.r) {
-            if(ball.y > ch/2-140 && ball.y < ch/2+140) { 
-                if(ball.x<0 || ball.x>cw) { 
-                    score[ball.x<cw/2?1:0]++; 
-                    if(score[0]>=5 || score[1]>=5) endMatch(); else resetPositions(); 
-                } 
+            if(ball.y > ch/2-140 && ball.y < ch/2+140) {
+                if(ball.x < 0 || ball.x > cw) {
+                    score[ball.x < cw/2 ? 1 : 0]++;
+                    if(score[0] >= 5 || score[1] >= 5) endMatch();
+                    else resetPositions();
+                    if(playerRef) playerRef.update({ x: pList.find(p=>p.isMe).x, y: pList.find(p=>p.isMe).y });
+                    matchRef.update({ score: score, ball: ball });
+                    return;
+                }
+            } else {
+                ball.vx *= -0.9;
+                ball.x = Math.max(40+ball.r, Math.min(cw-40-ball.r, ball.x));
             }
-            else { ball.vx*=-0.9; ball.x = Math.max(40+ball.r, Math.min(cw-40-ball.r, ball.x)); }
         }
     }
-
+    
+    // Движение ботов и игроков
     pList.forEach(p => {
-        let isFrozen = botsFrozen || (enemyFrozen && p.t === 2);
-        if(!p.isMe && !isFrozen) {
-            let tx=ball.x, ty=ball.y;
-            if(p.role==='gk'){ tx=(p.t===2)?cw-150:150; ty=Math.max(ch/2-110, Math.min(ch/2+110, ball.y)); if(Math.abs(ball.x-p.x)<200) tx=ball.x; }
-            if(Math.hypot(ball.x-p.x, ball.y-p.y) < p.r+ball.r+5 && (ball.x<150||ball.x>cw-150)) p.stuckTicks++; else p.stuckTicks=0;
-            if(p.stuckTicks>45) { tx=cw/2; ty=ch/2; if(p.stuckTicks>90) p.stuckTicks=0; }
-            let dx=tx-p.x, dy=ty-p.y, d=Math.hypot(dx,dy);
-            if(d>5){ p.x+=(dx/d)*p.p; p.y+=(dy/d)*p.p; }
-            p.x=Math.max(p.t===2?cw/2+p.r:p.r+45, Math.min(p.t===2?cw-p.r-45:cw/2-p.r, p.x));
-            p.y=Math.max(p.r+45, Math.min(ch-p.r-45, p.y));
-            if(p.pinTimer <= 0 && Math.random() < 0.002) sendPin(PINS[Math.floor(Math.random()*PINS.length)], p.id);
+        let isFrozen = (botsFrozen && p.isBot) || (enemyFrozen && p.team === 2);
+        
+        if(p.isBot && !isFrozen) {
+            let tx = ball.x, ty = ball.y;
+            let isGK = (p.team === 1 && p.x < cw/2-100) || (p.team === 2 && p.x > cw/2+100);
+            if(isGK) {
+                tx = p.team === 1 ? 150 : cw-150;
+                ty = Math.max(ch/2-110, Math.min(ch/2+110, ball.y));
+                if(Math.abs(ball.x-p.x) < 200) tx = ball.x;
+            }
+            let dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
+            if(d > 5) {
+                p.x += (dx/d) * p.p;
+                p.y += (dy/d) * p.p;
+            }
+            p.x = Math.max(p.team===2 ? cw/2+p.r : p.r+45, Math.min(p.team===2 ? cw-p.r-45 : cw/2-p.r, p.x));
+            p.y = Math.max(p.r+45, Math.min(ch-p.r-45, p.y));
+            
+            if(p.pinTimer <= 0 && Math.random() < 0.002) {
+                let pin = PINS[Math.floor(Math.random() * PINS.length)];
+                p.activePin = pin;
+                p.pinTimer = 100;
+                if(playerRef) db.ref(`matches/${currentMatchId}/pins`).push({ uid: p.uid, pin: pin });
+            }
         }
+        
         if(Math.hypot(ball.x-p.x, ball.y-p.y) < p.r+ball.r) {
-            let ang=Math.atan2(ball.y-p.y, ball.x-p.x);
-            ball.vx=Math.cos(ang)*Math.max(12, p.p*1.5); ball.vy=Math.sin(ang)*Math.max(12, p.p*1.5);
-            ball.x=p.x+Math.cos(ang)*(p.r+ball.r+2); ball.y=p.y+Math.sin(ang)*(p.r+ball.r+2);
+            let ang = Math.atan2(ball.y-p.y, ball.x-p.x);
+            ball.vx = Math.cos(ang) * Math.max(12, p.p*1.5);
+            ball.vy = Math.sin(ang) * Math.max(12, p.p*1.5);
+            ball.x = p.x + Math.cos(ang)*(p.r+ball.r+2);
+            ball.y = p.y + Math.sin(ang)*(p.r+ball.r+2);
         }
-        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fillStyle=p.t===1?'#0066ff':'#ff3333'; ctx.fill();
-        ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.stroke();
-        ctx.font=p.r+"px Arial"; ctx.textAlign="center"; ctx.fillText(isFrozen?'🥶':p.e, p.x, p.y+p.r/3);
+        
+        if(p.pinTimer > 0) p.pinTimer--;
+    });
+    
+    // Отправка своей позиции
+    let me = pList.find(p => p.isMe);
+    if(me && playerRef) {
+        playerRef.update({ x: me.x, y: me.y, activePin: me.activePin, pinTimer: me.pinTimer });
+        if(me.activePin && me.pinTimer === 99) {
+            db.ref(`matches/${currentMatchId}/pins`).push({ uid: curUser, pin: me.activePin });
+        }
+    }
+    
+    // Сохраняем состояние в Firebase
+    if(matchRef) {
+        matchRef.update({ score: score, ball: ball });
+    }
+    
+    // Отрисовка
+    ctx.fillStyle = '#2e86de';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.roundRect(40, 40, cw-80, ch-80, cornRad);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cw/2, 40);
+    ctx.lineTo(cw/2, ch-40);
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, ch/2-140, 45, 280);
+    ctx.fillRect(cw-45, ch/2-140, 45, 280);
+    
+    pList.forEach(p => {
+        let isFrozen = (botsFrozen && p.isBot) || (enemyFrozen && p.team === 2);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fillStyle = p.team === 1 ? '#0066ff' : '#ff3333';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.font = p.r + "px Arial";
+        ctx.textAlign = "center";
+        ctx.fillStyle = '#fff';
+        ctx.fillText(isFrozen ? '🥶' : p.av, p.x, p.y + p.r/3);
+        
         if(p.pinTimer > 0) {
-            ctx.fillStyle="white"; ctx.beginPath(); ctx.roundRect(p.x-35, p.y-p.r-70, 70, 50, 10); ctx.fill();
-            ctx.font="32px Arial"; ctx.fillStyle="black"; ctx.fillText(p.activePin, p.x, p.y-p.r-35);
-            p.pinTimer--;
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.roundRect(p.x-35, p.y-p.r-70, 70, 50, 10);
+            ctx.fill();
+            ctx.font = "32px Arial";
+            ctx.fillStyle = "black";
+            ctx.fillText(p.activePin, p.x, p.y-p.r-35);
         }
     });
-    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill();
-    document.getElementById('sc1').innerText=score[0]; document.getElementById('sc2').innerText=score[1];
-    requestAnimationFrame(loop);
+    
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+    ctx.fill();
+    
+    document.getElementById('sc1').innerText = score[0];
+    document.getElementById('sc2').innerText = score[1];
+    
+    animationId = requestAnimationFrame(gameLoop);
 }
 
 function resetPositions() {
-    ball={x:cw/2, y:ch/2, vx:0, vy:0, r:28};
-    pList.forEach(p=>{ p.x=p.t===1?200:1080; p.y=p.id>2?(p.t===1?150:570):ch/2; p.stuckTicks=0; });
+    ball = { x: cw/2, y: ch/2, vx: 0, vy: 0, r: 28 };
+    pList.forEach(p => {
+        p.x = p.team === 1 ? 200 : 1080;
+        p.y = ch/2;
+        if(mode === 2 && p.team === 1 && pList.filter(pl=>pl.team===1).indexOf(p) === 1) p.y = 150;
+        if(mode === 2 && p.team === 2 && pList.filter(pl=>pl.team===2).indexOf(p) === 1) p.y = 570;
+    });
 }
 
 function endMatch() {
-    inGame=false;
+    if(!inGame) return;
     let result = score[0] > score[1] ? 1 : (score[1] > score[0] ? -1 : 0);
     let cPlus = result === 1 ? 15 : (result === -1 ? -10 : 0);
     let mPlus = result === 1 ? Math.floor(Math.random()*10)+5 : 0;
@@ -452,20 +696,101 @@ function endMatch() {
     document.getElementById('res-title').innerText = result === 1 ? "ПОБЕДА!" : (result === -1 ? "ПОРАЖЕНИЕ" : "НИЧЬЯ");
     document.getElementById('res-stats').innerText = `${cPlus} 🏆 | ${mPlus} 💰`;
     document.getElementById('mod-result').style.display = 'flex';
+    
+    if(matchRef) matchRef.off();
+    if(playerRef) playerRef = null;
+    inGame = false;
+    currentMatchId = null;
 }
 
+function closeResult() {
+    document.getElementById('mod-result').style.display = 'none';
+    renderLobby();
+}
+
+function sendPin(emoji) {
+    if(!inGame || !currentMatchId) return;
+    let me = pList.find(p => p.isMe);
+    if(me) {
+        me.activePin = emoji;
+        me.pinTimer = 100;
+        db.ref(`matches/${currentMatchId}/pins`).push({ uid: curUser, pin: emoji });
+    }
+}
+
+function getPos(e) {
+    let r = cvs.getBoundingClientRect();
+    let t = e.touches ? e.touches[0] : e;
+    return { x: (t.clientX - r.left) * (cw / r.width), y: (t.clientY - r.top) * (ch / r.height) };
+}
+
+function startDrag(e) {
+    if(!inGame) return;
+    let p = getPos(e);
+    let me = pList.find(x => x.isMe);
+    if(me && Math.hypot(me.x - p.x, me.y - p.y) < me.r * 3) dragId = me.id;
+}
+
+function moveDrag(e) {
+    if(!dragId || !inGame) return;
+    if(e.touches) e.preventDefault();
+    let p = getPos(e);
+    let me = pList.find(x => x.id === dragId);
+    if(me) {
+        me.x = Math.max(me.r+45, Math.min(cw/2-10, p.x));
+        me.y = Math.max(me.r+45, Math.min(ch-me.r-45, p.y));
+    }
+}
+
+cvs.addEventListener('touchstart', startDrag);
+cvs.addEventListener('touchmove', moveDrag, { passive: false });
+cvs.addEventListener('mousedown', startDrag);
+window.addEventListener('mousemove', moveDrag);
+window.addEventListener('mouseup', () => dragId = null);
+
+window.addEventListener('keydown', (e) => {
+    if(!inGame) return;
+    if(e.key >= '1' && e.key <= '6') sendPin(PINS[parseInt(e.key)-1]);
+});
+
 function renderLB() {
-    let l = document.getElementById('lb-list'); l.innerHTML = 'Загрузка...';
+    let l = document.getElementById('lb-list');
+    l.innerHTML = 'Загрузка...';
     db.ref('accounts').once('value', s => {
-        let items = []; 
-        s.forEach(c => { 
-            let d=c.val(); d.id=c.key; d.total = getTotalCups(d);
-            items.push(d); 
+        let items = [];
+        s.forEach(c => {
+            let d = c.val();
+            d.id = c.key;
+            d.total = getTotalCups(d);
+            items.push(d);
         });
-        items.sort((a,b) => b.total-a.total); l.innerHTML = '';
-        items.slice(0,10).forEach((d,i) => l.innerHTML += `<div style="padding:10px; background:rgba(255,255,255,0.1); margin-bottom:5px; border-radius:10px; display:flex; justify-content:space-between;"><span>#${i+1} ${d.av} ${d.nick} <small style="color:rgba(255,255,255,0.5); font-size: 10px;"> [${d.id}]</small></span><span style="color:#ff9000">🏆 ${d.total}</span></div>`);
+        items.sort((a,b) => b.total - a.total);
+        l.innerHTML = '';
+        items.slice(0,10).forEach((d,i) => {
+            l.innerHTML += `<div style="padding:10px; background:rgba(255,255,255,0.1); margin-bottom:5px; border-radius:10px; display:flex; justify-content:space-between;">
+                <span>#${i+1} ${d.av} ${d.nick} <small style="color:rgba(255,255,255,0.5); font-size: 10px;"> [${d.id}]</small></span>
+                <span style="color:#ff9000">🏆 ${d.total}</span>
+            </div>`;
+        });
     });
     switchScr('scr-lb');
+}
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
+        this.moveTo(x+r, y);
+        this.lineTo(x+w-r, y);
+        this.quadraticCurveTo(x+w, y, x+w, y+r);
+        this.lineTo(x+w, y+h-r);
+        this.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+        this.lineTo(x+r, y+h);
+        this.quadraticCurveTo(x, y+h, x, y+h-r);
+        this.lineTo(x, y+r);
+        this.quadraticCurveTo(x, y, x+r, y);
+        return this;
+    };
 }
 </script>
 </body>
