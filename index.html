@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Hockey Stars: Smart AI & Pins</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<style>
+* { box-sizing: border-box; font-family: 'Arial Black', sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+body { background: #000; color: #fff; overflow: hidden; width: 100vw; height: 100dvh; display: flex; align-items: center; justify-content: center; }
+#game-container { position: relative; width: 100dvw; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0b1c3c; padding-bottom: env(safe-area-inset-bottom, 20px); }
+canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2e86de; border: 4px solid #fff; border-radius: 60px; display: block; cursor: crosshair; }
+.screen { position: absolute; width: 100%; height: 100%; display: none; background: radial-gradient(circle, #1a3a7a, #0b1c3c); flex-direction: column; align-items: center; justify-content: center; z-index: 10; padding: 20px; text-align: center; }
+.active { display: flex; }
+.btn { background: #f5d300; color: #000; border: 3px solid #000; border-radius: 10px; padding: 8px 16px; font-size: 14px; cursor: pointer; box-shadow: 0 4px 0 #000; text-transform: uppercase; margin: 4px; min-width: 120px; text-align: center; }
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
+.btn-red { background: #ff4747; color: #fff; }
+.btn-blue { background: #0084ff; color: #fff; }
+.btn-locked { background: #444; color: #888; border-color: #222; box-shadow: 0 4px 0 #222; }
+.input-field { padding: 10px; font-size: 14px; border: 3px solid #000; border-radius: 10px; width: 260px; margin-bottom: 8px; text-align: center; }
+.top-bar { position: absolute; top: 15px; width: 90%; display: flex; justify-content: space-between; z-index: 20; }
+.stat-box { background: rgba(0,0,0,0.8); padding: 5px 12px; border-radius: 10px; border: 2px solid #fff; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 13px; }
+.overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.emoji-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 10px 0; max-height: 120px; overflow-y: auto; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; }
+.emoji-btn { font-size: 24px; padding: 5px; cursor: pointer; border: 3px solid transparent; border-radius: 8px; }
+.emoji-btn.sel { border-color: #f5d300; background: rgba(245,211,0,0.2); }
+#game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; z-index: 50; }
+.score-board { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: #000; border: 3px solid #fff; padding: 4px 20px; border-radius: 12px; font-size: 20px; pointer-events: auto; }
+.pins-container { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: auto; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 30px; border: 2px solid rgba(255,255,255,0.2); }
+.pin-btn { font-size: 24px; cursor: pointer; transition: transform 0.1s; position: relative; }
+.pin-btn:active { transform: scale(1.2); }
+.pin-btn::after { content: attr(data-key); position: absolute; bottom: -8px; right: -8px; font-size: 10px; background: #fff; color: #000; padding: 0 3px; border-radius: 3px; display: block; }
+@media (max-width: 600px) { .pin-btn::after { display: none; } }
+.online-tag { position: absolute; bottom: 15px; right: 20px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; font-size: 11px; color: #00ff00; border: 1px solid #00ff00; }
+#btn-admin { position: fixed; top: 10px; left: 10px; display: none; z-index: 100; font-size: 11px; padding: 5px 10px; min-width: auto; background: #fff; color: #000; pointer-events: auto; }
+#rotate-hint { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #050c1a; z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+@media (orientation: portrait) { #rotate-hint { display: flex; } }
+</style>
+</head>
+<body>
+
+<div id="rotate-hint"><h2>🔄 ПОВЕРНИ ТЕЛЕФОН</h2></div>
+<div id="btn-admin" class="btn" onclick="openAdmin()">👑 АДМИН</div>
+
+<div id="game-container">
+    <div id="scr-auth" class="screen active">
+        <h1 style="color:#f5d300; margin-bottom:20px; font-size: 28px;">HOCKEY STARS</h1>
+        <input type="text" id="auth-user" class="input-field" placeholder="Логин (ID)">
+        <input type="password" id="auth-pass" class="input-field" placeholder="Пароль">
+        <div class="btn" onclick="tryAuth()">ВХОД / РЕГИСТРАЦИЯ</div>
+    </div>
+
+    <div id="scr-lobby" class="screen">
+        <div class="top-bar">
+            <div class="stat-box" onclick="openSettings()" style="cursor:pointer">
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span id="lb-av" style="font-size:18px;"></span>
+                    <span id="lb-nick"></span> ⚙️
+                </div>
+                <div style="font-size:10px; color:#aaa;">ID: <span id="lb-id"></span></div>
+            </div>
+            <div class="stat-box">
+                <span style="color:#ff9000">🏆 <span id="lb-cups">0</span></span>
+                <span style="color:#f5d300">💰 <span id="lb-coins">0</span></span>
+            </div>
+        </div>
+        
+        <div style="margin-top:30px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                <div class="btn" style="min-width:40px; padding:5px;" onclick="changeChar(-1)">◄</div>
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:15px; border:2px solid #fff; min-width:140px;">
+                    <div id="ch-img" style="font-size:50px;"></div>
+                    <div id="ch-name" style="font-size:16px; color:#f5d300;"></div>
+                    <div id="ch-info" style="font-size:11px; color:#ddd;"></div>
+                </div>
+                <div class="btn" style="min-width:40px; padding:5px;" onclick="changeChar(1)">►</div>
+            </div>
+            <div id="char-actions"></div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <div class="btn btn-blue" onclick="startMode(1)">1 VS 1</div>
+                <div class="btn btn-red" onclick="startMode(2)">2 VS 2</div>
+            </div>
+            <div class="btn btn-blue" style="width:100%; font-size:12px;" onclick="switchScr('scr-lb')">ТОП ИГРОКОВ</div>
+        </div>
+        <div class="online-tag">В СЕТИ: <span id="online-count">1</span></div>
+    </div>
+
+    <div id="scr-game" class="screen" style="padding:0;">
+        <canvas id="cvs"></canvas>
+        <div id="game-ui">
+            <div class="score-board"><span id="sc1" style="color:#0084ff">0</span> : <span id="sc2" style="color:#ff4747">0</span></div>
+            <div class="pins-container">
+                <div class="pin-btn" data-key="1" onclick="sendPin('😆')">😆</div>
+                <div class="pin-btn" data-key="2" onclick="sendPin('👍')">👍</div>
+                <div class="pin-btn" data-key="3" onclick="sendPin('👎')">👎</div>
+                <div class="pin-btn" data-key="4" onclick="sendPin('😭')">😭</div>
+                <div class="pin-btn" data-key="5" onclick="sendPin('🤡')">🤡</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="scr-lb" class="screen">
+        <h2 style="font-size: 20px;">ГЛОБАЛЬНЫЙ ТОП</h2>
+        <div id="lb-list" style="width:90%; flex:1; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:15px; padding:10px; margin:10px 0;"></div>
+        <div class="btn btn-red" onclick="switchScr('scr-lobby')">НАЗАД</div>
+    </div>
+
+    <div id="mod-settings" class="overlay">
+        <h3>НАСТРОЙКИ</h3>
+        <input type="text" id="set-nick" class="input-field" placeholder="Ник">
+        <input type="text" id="set-id" class="input-field" placeholder="Новый ID">
+        <input type="password" id="set-pass" class="input-field" placeholder="Новый Пароль">
+        <div class="emoji-grid" id="set-emoji-grid"></div>
+        <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:5px;">
+            <div class="btn btn-blue" onclick="saveSettings()">СОХРАНИТЬ</div>
+            <div class="btn btn-red" onclick="closeSettings()">ЗАКРЫТЬ</div>
+            <div class="btn" style="background:#555; color:#fff;" onclick="logout()">ВЫЙТИ ИЗ АККАУНТА</div>
+        </div>
+    </div>
+
+    <div id="mod-admin" class="overlay" style="z-index: 300;">
+        <h3 style="color:#f5d300; margin-bottom:15px;">👑 ПАНЕЛЬ БОГА</h3>
+        <div style="background:#222; padding:15px; border-radius:10px; margin-bottom:15px; width:90%; max-width: 400px;">
+            <input type="text" id="adm-id" class="input-field" placeholder="ID игрока" style="width:100%">
+            <input type="text" id="adm-nick" class="input-field" placeholder="Новый Ник" style="width:100%">
+            <input type="text" id="adm-av" class="input-field" placeholder="Аватарка" style="width:100%">
+            <div style="display:flex; gap:5px;">
+                <input type="number" id="adm-cups" class="input-field" placeholder="Кубки" style="width:50%">
+                <input type="number" id="adm-coins" class="input-field" placeholder="Монеты" style="width:50%">
+            </div>
+            <div class="btn btn-blue" style="width:100%" onclick="admSavePlayer()">ПРИМЕНИТЬ ДАННЫЕ</div>
+        </div>
+        <div id="adm-game-block" style="background:#222; padding:15px; border-radius:10px; margin-bottom:15px; width:90%; max-width: 400px; display:none;">
+            <div style="display:flex; gap:5px; margin-bottom:10px;">
+                <div class="btn btn-blue" style="flex:1" onclick="admFreeze(true)">🥶 ЗАМОРОЗИТЬ</div>
+                <div class="btn btn-red" style="flex:1" onclick="admFreeze(false)">🔥 РАЗМЕРЗЕТЬ</div>
+            </div>
+            <div style="display:flex; gap:5px;">
+                <div class="btn" style="flex:1; background:#00ff00; color:#000;" onclick="admWin()">ПОБЕДА</div>
+                <div class="btn btn-red" style="flex:1" onclick="admLose()">СЛИВ</div>
+            </div>
+        </div>
+        <div class="btn" style="background:#555; color:#fff;" onclick="closeAdmin()">ЗАКРЫТЬ ПАНЕЛЬ</div>
+    </div>
+</div>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyCWznT2BrzSlsiB83VhNUEje1om8ktsG3s",
+    authDomain: "threecats-hockey.firebaseapp.com",
+    databaseURL: "https://threecats-hockey-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "threecats-hockey",
+    appId: "1:859200036415:web:eac0eaa951fc642d75a28a"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const CHARS = [
+    {n:'Кейт', e:'🐱', size:1, power:1, price:0},
+    {n:'Элен', e:'👽', size:1.2, power:0.8, price:25},
+    {n:'Майни', e:'🐵', size:0.8, power:1.2, price:67},
+    {n:'Замб', e:'🧟', size:2, power:1.2, price:104},
+    {n:'Базз', e:'🐝', size:0.6, power:1.6, price:121},
+    {n:'Гэст', e:'👻', size:1, power:1.5, price:155},
+    {n:'Пуп', e:'💩', size:0.7, power:1.4, price:220},
+    {n:'Клауни', e:'🤡', size:2, power:2, price:333}
+];
+const EMOJIS = ['😺','😎','👽','🤖','👻','💀','🤡','💩','🐵','🦊','🐯','🐸','🐙','🎮','🏆','🔥','💎','🚀','🛸','🌟'];
+
+let curUser = null, uData = null, selIdx = 0, tempAv = '🐱';
+let inGame = false, mode = 1, score = [0,0], pList = [], ball = {};
+let cvs = document.getElementById('cvs'), ctx = cvs.getContext('2d');
+let cw = 1280, ch = 720, dragId = null, cornRad = 100;
+let botsFrozen = false, activePin = null, pinTimer = 0;
+
+window.onload = () => {
+    if(localStorage.getItem('hockey_ver') !== '1.3') {
+        localStorage.removeItem('hockey_active_game');
+        localStorage.removeItem('hockey_plist');
+        localStorage.setItem('hockey_ver', '1.3');
+    }
+
+    let saved = localStorage.getItem('hockey_id');
+    if(saved) {
+        db.ref('accounts/' + saved).once('value', s => {
+            if(s.exists()) { login(saved, s.val()); checkPersist(); }
+            else localStorage.removeItem('hockey_id');
+        });
+    }
+};
+
+function sendPin(emoji) {
+    if(!inGame) return;
+    activePin = emoji; pinTimer = 100;
+}
+
+window.addEventListener('keydown', (e) => {
+    if(!inGame) return;
+    const map = {'1':'😆', '2':'👍', '3':'👎', '4':'😭', '5':'🤡'};
+    if(map[e.key]) sendPin(map[e.key]);
+});
+
+function trackPresence() {
+    let presRef = db.ref('presence/' + curUser);
+    presRef.onDisconnect().remove();
+    presRef.set(true);
+    db.ref('presence').on('value', s => { document.getElementById('online-count').innerText = s.numChildren() || 1; });
+}
+
+function checkPersist() {
+    let active = localStorage.getItem('hockey_active_game');
+    if(active === 'true') {
+        mode = parseInt(localStorage.getItem('hockey_mode')) || 1;
+        score = JSON.parse(localStorage.getItem('hockey_score')) || [0,0];
+        initGame(true);
+    }
+}
+
+function saveGameState() {
+    if(!inGame) return;
+    localStorage.setItem('hockey_score', JSON.stringify(score));
+    localStorage.setItem('hockey_ball', JSON.stringify(ball));
+    localStorage.setItem('hockey_plist', JSON.stringify(pList));
+}
+
+function switchScr(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    if(id === 'scr-lb') renderLB();
+}
+
+function tryAuth() {
+    let user = document.getElementById('auth-user').value.trim().toLowerCase();
+    let pass = document.getElementById('auth-pass').value.trim();
+    if(user.length < 3 || pass.length < 3) return alert("Минимум 3 символа!");
+    db.ref('accounts/' + user).once('value', s => {
+        if(s.exists()) {
+            if(s.val().pass === pass) login(user, s.val());
+            else alert("Неверный пароль!");
+        } else {
+            let newData = { pass, nick: user, av: '🐱', cups: 0, coins: 0, unlocked: ['Кейт'], selected: 0 };
+            db.ref('accounts/' + user).set(newData).then(() => login(user, newData));
+        }
+    });
+}
+
+function login(id, data) {
+    curUser = id; uData = data; selIdx = data.selected || 0;
+    localStorage.setItem('hockey_id', id);
+    if(curUser === 'domipurple') document.getElementById('btn-admin').style.display = 'block';
+    trackPresence();
+    db.ref('accounts/' + id).on('value', s => { if(s.exists()) { uData = s.val(); renderLobby(); } });
+}
+
+function logout() { localStorage.removeItem('hockey_id'); localStorage.removeItem('hockey_active_game'); location.reload(); }
+
+function renderLobby() {
+    if(inGame) return;
+    switchScr('scr-lobby');
+    document.getElementById('lb-av').innerText = uData.av;
+    document.getElementById('lb-nick').innerText = uData.nick;
+    document.getElementById('lb-id').innerText = curUser;
+    document.getElementById('lb-cups').innerText = uData.cups;
+    document.getElementById('lb-coins').innerText = uData.coins;
+    updateCharUI();
+}
+
+function updateCharUI() {
+    let c = CHARS[selIdx];
+    document.getElementById('ch-img').innerText = c.e;
+    document.getElementById('ch-name').innerText = c.n;
+    document.getElementById('ch-info').innerText = `Сила: ${c.power} | Разм: ${c.size}`;
+    let area = document.getElementById('char-actions');
+    let isUnlocked = uData.unlocked.includes(c.n);
+    if(isUnlocked) {
+        area.innerHTML = selIdx === uData.selected ? `<div class="btn btn-locked" style="width:100%">АКТИВЕН</div>` : `<div class="btn btn-blue" style="width:100%" onclick="selectChar()">ВЫБРАТЬ</div>`;
+    } else {
+        area.innerHTML = `<div class="btn" style="width:100%" onclick="buyChar()">КУПИТЬ: ${c.price}💰</div>`;
+    }
+}
+function selectChar() { db.ref('accounts/'+curUser).update({ selected: selIdx }); }
+function buyChar() {
+    let c = CHARS[selIdx];
+    if(uData.coins >= c.price) {
+        let newUnlocked = [...uData.unlocked, c.n];
+        db.ref('accounts/'+curUser).update({ coins: uData.coins - c.price, unlocked: newUnlocked });
+    } else alert("Не хватает монет!");
+}
+function changeChar(d) { selIdx = (selIdx + d + CHARS.length) % CHARS.length; updateCharUI(); }
+
+function openAdmin() { document.getElementById('mod-admin').style.display = 'flex'; document.getElementById('adm-game-block').style.display = inGame ? 'block' : 'none'; }
+function closeAdmin() { document.getElementById('mod-admin').style.display = 'none'; }
+async function admSavePlayer() {
+    let id = document.getElementById('adm-id').value.trim().toLowerCase();
+    let snap = await db.ref('accounts/' + id).once('value');
+    if(!snap.exists()) return alert("Нет игрока!");
+    let pD = snap.val();
+    let nN = document.getElementById('adm-nick').value.trim(); if(nN) pD.nick = nN;
+    let nA = document.getElementById('adm-av').value.trim(); if(nA) pD.av = nA;
+    let nCp = document.getElementById('adm-cups').value.trim(); if(nCp !== "") pD.cups = parseInt(nCp);
+    let nCn = document.getElementById('adm-coins').value.trim(); if(nCn !== "") pD.coins = parseInt(nCn);
+    await db.ref('accounts/' + id).set(pD); alert("Обновлено!");
+}
+
+function admFreeze(s) { botsFrozen = s; }
+function admWin() { score[0] = 5; updateSc(); resetRound(); closeAdmin(); }
+function admLose() { score[1] = 5; updateSc(); resetRound(); closeAdmin(); }
+
+function getPos(e) {
+    let r = cvs.getBoundingClientRect(); let t = e.touches ? e.touches[0] : e;
+    return { x: (t.clientX - r.left) * (cw / r.width), y: (t.clientY - r.top) * (ch / r.height) };
+}
+function startDrag(e) { if(!inGame) return; let p = getPos(e); let me = pList.find(pl => pl.isMe); if(me && Math.hypot(me.x - p.x, me.y - p.y) < me.r * 3) dragId = me.id; }
+function moveDrag(e) {
+    if(!dragId || !inGame) return; if(e.touches) e.preventDefault();
+    let p = getPos(e); let me = pList.find(pl => pl.id === dragId);
+    if(me) { me.x = Math.max(me.r + 45, Math.min(cw/2 - 10, p.x)); me.y = Math.max(me.r + 45, Math.min(ch - me.r - 45, p.y)); }
+}
+cvs.addEventListener('touchstart', startDrag); cvs.addEventListener('touchmove', moveDrag, {passive:false});
+cvs.addEventListener('mousedown', startDrag); window.addEventListener('mousemove', moveDrag);
+window.addEventListener('mouseup', () => dragId = null); window.addEventListener('touchend', () => dragId = null);
+
+function startMode(m) { mode = m; score = [0,0]; botsFrozen = false; localStorage.setItem('hockey_active_game', 'true'); localStorage.setItem('hockey_mode', mode); initGame(); }
+
+function initGame(isResume = false) {
+    switchScr('scr-game'); document.getElementById('game-ui').style.display = 'block';
+    cvs.width = cw; cvs.height = ch; inGame = true; updateSc();
+    if(isResume && localStorage.getItem('hockey_plist')) {
+        pList = JSON.parse(localStorage.getItem('hockey_plist'));
+        ball = JSON.parse(localStorage.getItem('hockey_ball'));
+    } else {
+        let c = CHARS[uData.selected || 0];
+        pList = [{ id:1, x:200, y:ch/2, r:30*c.size, p:c.power*8, e:c.e, t:1, isMe:true, delay:0 }];
+        let bc = CHARS[Math.floor(Math.random()*CHARS.length)];
+        pList.push({ id:2, x:1080, y:ch/2, r:30*bc.size, p:bc.power*6, e:bc.e, t:2, isMe:false, role:'striker', delay:0, stuckTicks:0 });
+        if(mode === 2) {
+            pList.push({ id:3, x:200, y:150, r:35, p:7, e:'🦁', t:1, isMe:false, role:'goalkeeper', delay:0, stuckTicks:0 });
+            pList.push({ id:4, x:1080, y:200, r:35, p:5.5, e:'🐯', t:2, isMe:false, role:'goalkeeper', delay:0, stuckTicks:0 });
+        }
+        ball = { x:cw/2, y:ch/2, vx:0, vy:0, r:28 };
+    }
+    setInterval(saveGameState, 100);
+    requestAnimationFrame(loop);
+}
+
+function loop() {
+    if(!inGame) return;
+    ctx.fillStyle = '#2e86de'; ctx.fillRect(0,0,cw,ch);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 12;
+    ctx.beginPath(); ctx.moveTo(40+cornRad, 40); ctx.lineTo(cw-40-cornRad, 40); ctx.arcTo(cw-40, 40, cw-40, 40+cornRad, cornRad);
+    ctx.lineTo(cw-40, ch-40-cornRad); ctx.arcTo(cw-40, ch-40, cw-40-cornRad, ch-40, cornRad);
+    ctx.lineTo(40+cornRad, ch-40); ctx.arcTo(40, ch-40, 40, ch-40-cornRad, cornRad);
+    ctx.lineTo(40, 40+cornRad); ctx.arcTo(40, 40, 40+cornRad, 40, cornRad); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cw/2, 40); ctx.lineTo(cw/2, ch-40); ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.fillRect(0, ch/2-140, 45, 280); ctx.fillRect(cw-45, ch/2-140, 45, 280);
+
+    ball.x += ball.vx; ball.y += ball.vy; ball.vx *= 0.985; ball.vy *= 0.985;
+    if(ball.y < 40+ball.r || ball.y > ch-40-ball.r) { ball.vy *= -0.9; ball.y = Math.max(40+ball.r, Math.min(ch-40-ball.r, ball.y)); }
+    if(ball.x < 40+ball.r || ball.x > cw-40-ball.r) {
+        if(ball.y > ch/2-140 && ball.y < ch/2+140) {
+            if(ball.x<0 || ball.x>cw) { score[ball.x<cw/2?1:0]++; updateSc(); resetRound(); }
+        } else { ball.vx *= -0.9; ball.x = Math.max(40+ball.r, Math.min(cw-40-ball.r, ball.x)); }
+    }
+
+    pList.forEach(p => {
+        if(!p.isMe && !botsFrozen) {
+            if(p.delay > 0) p.delay--;
+            else {
+                let tx = ball.x, ty = ball.y;
+                if(p.role === 'goalkeeper') {
+                    tx = (p.t === 2) ? cw - 150 : 150; ty = Math.max(ch/2 - 110, Math.min(ch/2 + 110, ball.y));
+                    if (Math.abs(ball.x - p.x) < 200) tx = ball.x;
+                } else {
+                    tx = ball.x + (p.t === 2 ? 40 : -40);
+                    if(ball.x < 150 || ball.x > cw-150 || ball.y < 150 || ball.y > ch-150) {
+                        let angB = Math.atan2(ch/2 - ball.y, (p.t===2?0:cw) - ball.x);
+                        tx = ball.x - Math.cos(angB) * 60; ty = ball.y - Math.sin(angB) * 60;
+                    }
+                }
+                let dx = tx-p.x, dy = ty-p.y, d = Math.hypot(dx,dy);
+                if(d > 5) { p.x += (dx/d)*p.p; p.y += (dy/d)*p.p; }
+                if(Math.hypot(ball.vx, ball.vy) < 0.3 && d < p.r+ball.r+5) { p.stuckTicks = (p.stuckTicks||0)+1; if(p.stuckTicks>30){ ball.vx=(cw/2-ball.x)*0.05; p.delay=20; p.stuckTicks=0; }}
+                else p.stuckTicks=0;
+            }
+            p.x = Math.max(p.t==2?cw/2+p.r:p.r+45, Math.min(p.t==2?cw-p.r-45:cw/2-p.r, p.x));
+            p.y = Math.max(p.r+45, Math.min(ch-p.r-45, p.y));
+        }
+        
+        let dP = Math.hypot(ball.x-p.x, ball.y-p.y);
+        if(dP < p.r+ball.r && (!botsFrozen || p.isMe)) {
+            let ang = Math.atan2(ball.y-p.y, ball.x-p.x);
+            let force = Math.max(12, p.p * 1.6);
+            ball.vx = Math.cos(ang)*force; ball.vy = Math.sin(ang)*force;
+            ball.x = p.x + Math.cos(ang)*(p.r+ball.r + 2); ball.y = p.y + Math.sin(ang)*(p.r+ball.r + 2);
+        }
+        
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fillStyle = p.t==1?'#0066ff':'#ff3333'; ctx.fill();
+        ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.stroke();
+        ctx.font = (p.r)+"px Arial"; ctx.textAlign="center"; ctx.textBaseline="middle"; 
+        ctx.fillText((!p.isMe && botsFrozen)?'🥶':p.e, p.x, p.y);
+
+        if(p.isMe && activePin && pinTimer > 0) {
+            ctx.save(); ctx.globalAlpha = pinTimer/20;
+            ctx.fillStyle = "white"; ctx.beginPath(); ctx.roundRect(p.x-30, p.y-p.r-65, 60, 45, 10); ctx.fill();
+            ctx.font = "24px Arial"; ctx.fillText(activePin, p.x, p.y-p.r-42);
+            ctx.restore(); pinTimer--;
+        }
+    });
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill();
+    requestAnimationFrame(loop);
+}
+
+function updateSc() { document.getElementById('sc1').innerText=score[0]; document.getElementById('sc2').innerText=score[1]; }
+function resetRound() {
+    if(score[0]>=5 || score[1]>=5) { 
+        inGame=false; localStorage.removeItem('hockey_active_game'); localStorage.removeItem('hockey_plist');
+        let win = score[0]>=5; let cRew = win ? Math.floor(Math.random()*16)+5 : 0;
+        db.ref('accounts/'+curUser).update({ cups: Math.max(0, uData.cups + (win?15:-10)), coins: uData.coins + cRew }).then(renderLobby);
+        return; 
+    }
+    ball={x:cw/2, y:ch/2, vx:0, vy:0, r:28};
+    pList.forEach(p => { p.x=p.t==1?200:1080; p.y=p.id>2?(p.t==1?150:570):ch/2; p.delay=0; p.stuckTicks=0; });
+}
+function renderLB() {
+    let list = document.getElementById('lb-list'); list.innerHTML = 'Загрузка...';
+    db.ref('accounts').once('value', s => {
+        let items = []; s.forEach(c => { let v=c.val(); v.id=c.key; items.push(v); });
+        items.sort((a,b) => (b.cups||0)-(a.cups||0)); list.innerHTML = '';
+        items.slice(0, 15).forEach((d, i) => {
+            list.innerHTML += `<div style="display:flex; justify-content:space-between; padding:8px; background:rgba(255,255,255,0.1); margin-bottom:5px; border-radius:8px; border:1px solid ${d.id===curUser?'#f5d300':'transparent'}">
+                <span style="font-size:12px;">#${i+1} ${d.av} ${d.nick}</span> <b>🏆 ${d.cups||0}</b>
+            </div>`;
+        });
+    });
+}
+</script>
+</body>
+</html>
