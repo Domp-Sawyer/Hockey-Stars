@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Hockey Stars - Multiplayer</title>
+<title>Hockey Stars - Online</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <style>
@@ -207,8 +207,9 @@ let playerPinsRef = null;
 let isMatchHost = false;
 let mmInterval = null;
 let mmStartTime = 0;
-let mmMode = 1; // 1 или 2
+let mmMode = 1;
 let mmRequestRef = null;
+let mmTimeoutId = null;
 
 window.onload = () => {
     let saved = localStorage.getItem('hockey_id');
@@ -346,7 +347,7 @@ async function admDeletePlayer() {
 
 function admFreezeAll(s) { botsFrozen = s; closeAdmin(); }
 function admFreezeEnemy(s) { enemyFrozen = s; closeAdmin(); }
-function admEnd(win) { if(inGame && currentMatchId) { score[win?0:1] = 5; endMatch(); } closeAdmin(); }
+function admEnd(win) { if(inGame && currentMatchId && isMatchHost) { score[win?0:1] = 5; endMatch(); } closeAdmin(); }
 
 // ==================== МАТЧМЕЙКИНГ ====================
 function startMatchmaking(m) {
@@ -378,7 +379,7 @@ function startMatchmaking(m) {
     mmRequestRef.onDisconnect().remove();
     
     // слушаем изменения в очереди
-    db.ref(queuePath).on('value', (snap) => {
+    let queueListener = (snap) => {
         let players = [];
         snap.forEach(child => { players.push(child.val()); });
         players = players.filter(p => p.uid !== curUser);
@@ -393,22 +394,22 @@ function startMatchmaking(m) {
             allPlayers = allPlayers.slice(0, needed);
             createMatch(allPlayers, mmMode);
         }
-    });
+    };
+    db.ref(queuePath).on('value', queueListener);
     
-    // таймаут 45 секунд - запускаем с ботами
-    setTimeout(() => {
+    // таймаут 10 секунд - запускаем с ботами
+    if(mmTimeoutId) clearTimeout(mmTimeoutId);
+    mmTimeoutId = setTimeout(() => {
         if(inGame) return;
         db.ref(queuePath).once('value', (snap) => {
             let players = [];
             snap.forEach(child => { players.push(child.val()); });
             players = players.filter(p => p.uid !== curUser);
-            if(players.length + 1 < needed && mmInterval) {
-                let allPlayers = [ { uid: curUser, nick: uData.nick, av: uData.av, char: uData.selected }, ...players ];
-                while(allPlayers.length < needed) allPlayers.push(null); // бот
-                createMatch(allPlayers, mmMode);
-            }
+            let allPlayers = [ { uid: curUser, nick: uData.nick, av: uData.av, char: uData.selected }, ...players ];
+            while(allPlayers.length < needed) allPlayers.push(null); // бот
+            createMatch(allPlayers, mmMode);
         });
-    }, 45000);
+    }, 10000);
 }
 
 function updateMMTimer() {
@@ -418,6 +419,7 @@ function updateMMTimer() {
 
 function cancelMatchmaking() {
     if(mmInterval) clearInterval(mmInterval);
+    if(mmTimeoutId) clearTimeout(mmTimeoutId);
     if(mmRequestRef) mmRequestRef.remove();
     db.ref(`matchmaking/${mmMode === 1 ? '1v1' : '2v2'}`).off();
     renderLobby();
@@ -425,6 +427,7 @@ function cancelMatchmaking() {
 
 function createMatch(players, modeType) {
     if(mmInterval) clearInterval(mmInterval);
+    if(mmTimeoutId) clearTimeout(mmTimeoutId);
     if(mmRequestRef) mmRequestRef.remove();
     db.ref(`matchmaking/${modeType === 1 ? '1v1' : '2v2'}`).off();
     
@@ -468,7 +471,6 @@ function initMultiplayerGame(matchData) {
     ball = matchData.ball;
     pList = [];
     let myPlayer = null;
-    let playerIndex = -1;
     matchData.players.forEach((p, idx) => {
         let charData = CHARS[p.char];
         let isMe = p.uid === curUser;
@@ -493,7 +495,7 @@ function initMultiplayerGame(matchData) {
             isBot: p.isBot,
             pinTimer: 0,
             activePin: '',
-            targetX: x, targetY: y // для синхронизации
+            targetX: x, targetY: y
         };
         pList.push(player);
         if(isMe) myPlayer = player;
@@ -505,31 +507,34 @@ function initMultiplayerGame(matchData) {
     inGame = true;
     matchStartTime = Date.now();
     
-    // Слушаем обновления от Firebase
-    if(matchRef) matchRef.on('value', (snap) => {
-        let data = snap.val();
-        if(!data || data.state === 'finished') {
-            if(data && data.state === 'finished') endMatchRemote(data.result);
-            return;
-        }
-        score = data.score;
-        ball = data.ball;
-        // обновляем позиции других игроков
-        if(data.players) {
-            data.players.forEach((p, idx) => {
-                if(p.uid !== curUser && p.x !== undefined) {
-                    let player = pList.find(pl => pl.id === idx);
-                    if(player) {
-                        player.targetX = p.x;
-                        player.targetY = p.y;
-                        if(p.activePin) { player.activePin = p.activePin; player.pinTimer = 50; }
+    // Настройка прослушивания обновлений от хоста
+    if(!isMatchHost) {
+        // Клиент: слушаем мяч, счёт, позиции игроков (кроме себя)
+        matchRef.on('value', (snap) => {
+            let data = snap.val();
+            if(!data || data.state === 'finished') {
+                if(data && data.state === 'finished') endMatchRemote(data.result);
+                return;
+            }
+            score = data.score;
+            ball = data.ball;
+            // обновляем позиции других игроков
+            if(data.players) {
+                data.players.forEach((p, idx) => {
+                    if(p.uid !== curUser && p.x !== undefined) {
+                        let player = pList.find(pl => pl.id === idx);
+                        if(player) {
+                            player.targetX = p.x;
+                            player.targetY = p.y;
+                            if(p.activePin) { player.activePin = p.activePin; player.pinTimer = 50; }
+                        }
                     }
-                }
-            });
-        }
-    });
+                });
+            }
+        });
+    }
     
-    // Отправка своего движения
+    // Отправка своего движения (все игроки)
     playerPosRef = db.ref(`matches/${currentMatchId}/players/${pList.findIndex(p=>p.isMe)}`);
     let sendInterval = setInterval(() => {
         if(!inGame) { clearInterval(sendInterval); return; }
@@ -539,7 +544,7 @@ function initMultiplayerGame(matchData) {
     
     // Слушаем пины
     playerPinsRef = db.ref(`matches/${currentMatchId}/pins`);
-    if(playerPinsRef) playerPinsRef.on('child_added', snap => {
+    playerPinsRef.on('child_added', snap => {
         let data = snap.val();
         let target = pList.find(p => p.uid === data.uid);
         if(target && target.uid !== curUser) {
@@ -548,11 +553,16 @@ function initMultiplayerGame(matchData) {
         }
     });
     
-    // Запуск игрового цикла
-    requestAnimationFrame(() => multiLoop(sendInterval));
+    if(isMatchHost) {
+        // Хост: запускаем основной цикл с физикой
+        requestAnimationFrame(() => hostLoop(sendInterval));
+    } else {
+        // Клиент: только отрисовка
+        requestAnimationFrame(() => clientLoop(sendInterval));
+    }
 }
 
-function multiLoop(sendInterval) {
+function clientLoop(sendInterval) {
     if(!inGame) {
         if(sendInterval) clearInterval(sendInterval);
         if(playerPinsRef) playerPinsRef.off();
@@ -571,18 +581,13 @@ function multiLoop(sendInterval) {
     ctx.beginPath(); ctx.moveTo(cw/2,40); ctx.lineTo(cw/2,ch-40); ctx.stroke();
     ctx.fillStyle='#fff'; ctx.fillRect(0, ch/2-140, 45, 280); ctx.fillRect(cw-45, ch/2-140, 45, 280);
     
-    // Обновление позиций и физики (только для хоста)
-    if(isMatchHost) {
-        updatePhysicsHost();
-    } else {
-        // для не-хоста просто интерполируем позиции
-        pList.forEach(p => {
-            if(p.targetX !== undefined) {
-                p.x += (p.targetX - p.x) * 0.2;
-                p.y += (p.targetY - p.y) * 0.2;
-            }
-        });
-    }
+    // Интерполяция для других игроков
+    pList.forEach(p => {
+        if(!p.isMe && p.targetX !== undefined) {
+            p.x += (p.targetX - p.x) * 0.2;
+            p.y += (p.targetY - p.y) * 0.2;
+        }
+    });
     
     // Отрисовка
     pList.forEach(p => {
@@ -609,10 +614,91 @@ function multiLoop(sendInterval) {
     document.getElementById('sc1').innerText = score[0];
     document.getElementById('sc2').innerText = score[1];
     
-    requestAnimationFrame(() => multiLoop(sendInterval));
+    requestAnimationFrame(() => clientLoop(sendInterval));
+}
+
+function hostLoop(sendInterval) {
+    if(!inGame) {
+        if(sendInterval) clearInterval(sendInterval);
+        if(playerPinsRef) playerPinsRef.off();
+        if(matchRef) matchRef.off();
+        return;
+    }
+    
+    let tr = Math.max(0, 180000 - (Date.now() - matchStartTime));
+    let mins = Math.floor(tr / 60000), secs = Math.floor((tr % 60000) / 1000);
+    document.getElementById('game-timer').innerText = `0${mins}:${secs<10?'0':''}${secs}`;
+    if(tr <= 0) { endMatch(); return; }
+    
+    ctx.fillStyle='#2e86de'; ctx.fillRect(0,0,cw,ch);
+    ctx.strokeStyle='#fff'; ctx.lineWidth=12;
+    ctx.beginPath(); ctx.roundRect(40, 40, cw-80, ch-80, cornRad); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cw/2,40); ctx.lineTo(cw/2,ch-40); ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.fillRect(0, ch/2-140, 45, 280); ctx.fillRect(cw-45, ch/2-140, 45, 280);
+    
+    // Хост обновляет физику
+    updatePhysicsHost();
+    
+    // Отрисовка
+    pList.forEach(p => {
+        let isFrozen = (botsFrozen && p.isBot) || (enemyFrozen && p.team === 2);
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle = p.team === 1 ? '#0066ff' : '#ff3333';
+        ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth=4; ctx.stroke();
+        ctx.font = p.r + "px Arial";
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = "center";
+        ctx.fillText(isFrozen ? '🥶' : p.av, p.x, p.y + p.r/3);
+        if(p.pinTimer > 0) {
+            ctx.fillStyle = "white";
+            ctx.beginPath(); ctx.roundRect(p.x-35, p.y-p.r-70, 70, 50, 10); ctx.fill();
+            ctx.font = "32px Arial";
+            ctx.fillStyle = "black";
+            ctx.fillText(p.activePin, p.x, p.y-p.r-35);
+            p.pinTimer--;
+        }
+    });
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill();
+    document.getElementById('sc1').innerText = score[0];
+    document.getElementById('sc2').innerText = score[1];
+    
+    requestAnimationFrame(() => hostLoop(sendInterval));
 }
 
 function updatePhysicsHost() {
+    // Получаем актуальные позиции всех игроков из Firebase
+    // Для этого мы должны периодически читать позиции других игроков
+    // Сделаем это через отдельный слушатель, который обновляет pList.targetX/Y
+    // Уже есть matchRef.on для хоста? Нет, мы его не создавали для хоста. Создадим.
+    if(!matchRef._listener) {
+        matchRef.on('value', (snap) => {
+            let data = snap.val();
+            if(!data) return;
+            if(data.players) {
+                data.players.forEach((p, idx) => {
+                    if(p.uid !== curUser && p.x !== undefined) {
+                        let player = pList.find(pl => pl.id === idx);
+                        if(player) {
+                            player.targetX = p.x;
+                            player.targetY = p.y;
+                        }
+                    }
+                });
+            }
+        });
+        matchRef._listener = true;
+    }
+    
+    // Применяем позиции других игроков к текущим (для коллизий)
+    pList.forEach(p => {
+        if(!p.isMe && p.targetX !== undefined) {
+            p.x = p.targetX;
+            p.y = p.targetY;
+        }
+    });
+    
     // Обновление мяча
     ball.x += ball.vx; ball.y += ball.vy;
     ball.vx *= 0.985; ball.vy *= 0.985;
@@ -699,6 +785,8 @@ function endMatchRemote(result) {
     document.getElementById('res-stats').innerText = `${cPlus} 🏆 | ${mPlus} 💰`;
     document.getElementById('mod-result').style.display = 'flex';
     if(matchRef) matchRef.off();
+    if(playerPinsRef) playerPinsRef.off();
+    currentMatchId = null;
 }
 
 function endMatch() {
