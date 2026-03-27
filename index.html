@@ -17,19 +17,33 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
 .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
 .btn-red { background: #ff4747; color: #fff; }
 .btn-blue { background: #0084ff; color: #fff; }
+.btn-locked { background: #444; color: #888; border-color: #222; box-shadow: 0 4px 0 #222; }
 .input-field { padding: 10px; font-size: 14px; border: 3px solid #000; border-radius: 10px; width: 260px; margin-bottom: 8px; text-align: center; }
 .top-bar { position: absolute; top: 15px; width: 90%; display: flex; justify-content: space-between; z-index: 20; }
 .stat-box { background: rgba(0,0,0,0.8); padding: 5px 12px; border-radius: 10px; border: 2px solid #fff; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 13px; }
 .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.emoji-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; max-height: 120px; overflow-y: auto; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; }
+.emoji-btn { font-size: 24px; padding: 5px; cursor: pointer; border: 3px solid transparent; border-radius: 8px; }
+.emoji-btn.sel { border-color: #f5d300; background: rgba(245,211,0,0.2); }
 #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; z-index: 50; }
 .score-board { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: #000; border: 3px solid #fff; padding: 4px 20px; border-radius: 12px; font-size: 20px; pointer-events: auto; display: flex; gap: 15px; align-items: center; }
+.pins-container { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; pointer-events: auto; background: rgba(0,0,0,0.5); padding: 15px 10px; border-radius: 20px; border: 2px solid rgba(255,255,255,0.2); }
+.pin-btn { font-size: 28px; cursor: pointer; transition: transform 0.1s; position: relative; }
+.online-tag { position: absolute; bottom: 15px; right: 20px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; font-size: 11px; color: #00ff00; border: 1px solid #00ff00; }
+#btn-admin { position: fixed; top: 10px; left: 10px; display: none; z-index: 100; font-size: 11px; padding: 5px 10px; min-width: auto; background: #fff; color: #000; pointer-events: auto; }
+#rotate-hint { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #050c1a; z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.adm-panel-ctn { background:#222; padding:15px; border-radius:10px; margin-bottom:15px; width:95%; max-width: 400px; max-height: 60vh; overflow-y: auto; }
+@media (orientation: portrait) { #rotate-hint { display: flex; } }
 </style>
 </head>
 <body>
 
+<div id="rotate-hint"><h2>🔄 ПОВЕРНИ ТЕЛЕФОН</h2></div>
+<div id="btn-admin" class="btn" onclick="openAdmin()">👑 АДМИН</div>
+
 <div id="game-container">
     <div id="scr-auth" class="screen active">
-        <h1 style="color:#f5d300; margin-bottom:20px;">HOCKEY STARS</h1>
+        <h1 style="color:#f5d300; margin-bottom:20px; font-size: 28px;">HOCKEY STARS</h1>
         <input type="text" id="auth-user" class="input-field" placeholder="Логин (ID)">
         <input type="password" id="auth-pass" class="input-field" placeholder="Пароль">
         <div class="btn" onclick="tryAuth()">ВХОД</div>
@@ -37,23 +51,41 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
 
     <div id="scr-lobby" class="screen">
         <div class="top-bar">
-            <div class="stat-box">
-                <span id="lb-nick"></span>
-                <span id="lb-id" style="font-size:10px; color:#aaa;"></span>
+            <div class="stat-box" onclick="openSettings()" style="cursor:pointer">
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span id="lb-av" style="font-size:18px;"></span>
+                    <span id="lb-nick"></span> ⚙️
+                </div>
+                <div style="font-size:10px; color:#aaa;">ID: <span id="lb-id"></span></div>
             </div>
             <div class="stat-box">
                 <span style="color:#ff9000">🏆 <span id="lb-cups">0</span></span>
                 <span style="color:#f5d300">💰 <span id="lb-coins">0</span></span>
             </div>
         </div>
-        <div id="ch-img" style="font-size:80px; margin: 20px;"></div>
-        <div class="btn btn-blue" onclick="startSearch(1)">НАЙТИ ИГРУ 1 VS 1</div>
-        <div class="btn" onclick="renderLB()">ТОП</div>
+        
+        <div style="margin-top:30px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                <div class="btn" style="min-width:40px; padding:5px;" onclick="changeChar(-1)">◄</div>
+                <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:15px; border:2px solid #fff; min-width:160px;">
+                    <div id="ch-img" style="font-size:50px;"></div>
+                    <div id="ch-name" style="font-size:18px; color:#f5d300;"></div>
+                    <div id="ch-rank" style="color:#ff9000; font-size:14px; margin: 4px 0;"></div>
+                </div>
+                <div class="btn" style="min-width:40px; padding:5px;" onclick="changeChar(1)">►</div>
+            </div>
+            <div id="char-actions"></div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <div class="btn btn-blue" onclick="startSearch(1)">1 VS 1 ONLINE</div>
+            </div>
+            <div class="btn btn-blue" style="width:100%; font-size:12px;" onclick="renderLB()">ТОП ИГРОКОВ</div>
+        </div>
+        <div class="online-tag">В СЕТИ: <span id="online-count">1</span></div>
     </div>
 
     <div id="scr-search" class="screen">
-        <h2 style="color:#f5d300;">ПОИСК МАТЧА...</h2>
-        <div id="search-timer" style="font-size: 48px;">10</div>
+        <h2 style="color:#f5d300;">ПОИСК ИГРОКОВ...</h2>
+        <div id="search-timer" style="font-size: 64px;">10</div>
     </div>
 
     <div id="scr-game" class="screen" style="padding:0;">
@@ -64,11 +96,24 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
                 <span id="game-timer">03:00</span>
                 <span id="sc2" style="color:#ff4747">0</span>
             </div>
+            <div class="pins-container">
+                <div class="pin-btn" onclick="sendPin('😄')">😄</div>
+                <div class="pin-btn" onclick="sendPin('👍')">👍</div>
+                <div class="pin-btn" onclick="sendPin('👎')">👎</div>
+                <div class="pin-btn" onclick="sendPin('🤡')">🤡</div>
+            </div>
         </div>
+    </div>
+
+    <div id="mod-result" class="overlay">
+        <h2 id="res-title" style="font-size: 32px;">ПОБЕДА!</h2>
+        <div id="res-stats" style="margin: 20px 0; font-size: 18px;"></div>
+        <div class="btn btn-blue" onclick="location.reload()">В ЛОББИ</div>
     </div>
 </div>
 
 <script>
+// --- КОНФИГ И ДАННЫЕ ---
 const firebaseConfig = {
     apiKey: "AIzaSyCWznT2BrzSlsiB83VhNUEje1om8ktsG3s",
     authDomain: "threecats-hockey.firebaseapp.com",
@@ -79,18 +124,28 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const CHARS = [{n:'Кейт', e:'🐱', size:1.1, power:1}, {n:'Элен', e:'👽', size:1.3, power:0.8}]; // Увеличил размер по дефолту до 1.1
+const CHARS = [
+    {n:'Кейт', e:'🐱', size:1.2, power:1, price:0},
+    {n:'Элен', e:'👽', size:1.4, power:0.8, price:25},
+    {n:'Майни', e:'🐵', size:1.0, power:1.2, price:67},
+    {n:'Замб', e:'🧟', size:2.2, power:1.2, price:104},
+    {n:'Базз', e:'🐝', size:0.8, power:1.4, price:121},
+    {n:'Гэст', e:'👻', size:1.2, power:1.5, price:155},
+    {n:'Пуп', e:'💩', size:1.0, power:1.6, price:220},
+    {n:'Клауни', e:'🤡', size:2.2, power:2, price:333}
+];
 
-let curUser = null, uData = null;
-let roomId = null, mySide = null;
+let curUser = null, uData = null, selIdx = 0;
+let roomId = null, mySide = null, inGame = false;
 let cvs = document.getElementById('cvs'), ctx = cvs.getContext('2d');
-let cw = 1280, ch = 720, dragId = null;
+let cw = 1280, ch = 720;
 
+// --- АВТОРИЗАЦИЯ И ЛОББИ ---
 function tryAuth() {
     let u = document.getElementById('auth-user').value.trim().toLowerCase();
     let p = document.getElementById('auth-pass').value.trim();
     db.ref('accounts/' + u).once('value', s => {
-        if(s.exists()) { login(u, s.val()); }
+        if(s.exists()) { if(s.val().pass === p) login(u, s.val()); else alert("Пароль неверный"); }
         else { 
             let d = {pass:p, nick:u, av:'🐱', charCups:{}, coins:0, unlocked:['Кейт'], selected:0}; 
             db.ref('accounts/'+u).set(d).then(()=>login(u,d)); 
@@ -100,148 +155,197 @@ function tryAuth() {
 
 function login(id, data) {
     curUser = id; uData = data;
-    switchScr('scr-lobby');
-    document.getElementById('lb-nick').innerText = data.nick;
-    document.getElementById('lb-id').innerText = id;
-    document.getElementById('ch-img').innerText = CHARS[data.selected].e;
+    if(id === 'domipurple') document.getElementById('btn-admin').style.display = 'block';
+    renderLobby();
+    db.ref('presence/' + id).set(true); db.ref('presence/' + id).onDisconnect().remove();
     
-    // Проверка, не находится ли игрок уже в активном матче (после перезагрузки)
-    db.ref('players_in_match/' + curUser).once('value', s => {
-        if(s.exists()) joinRoom(s.val().roomId);
+    // ПРОВЕРКА РЕКОННЕКТА: если игрок уже в матче
+    db.ref('active_matches/' + id).once('value', snap => {
+        if(snap.exists()) joinRoom(snap.val().roomId);
     });
 }
 
-function switchScr(id) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
+function renderLobby() {
+    switchScr('scr-lobby');
+    document.getElementById('lb-nick').innerText = uData.nick;
+    document.getElementById('lb-cups').innerText = Object.values(uData.charCups || {}).reduce((a,b)=>a+b, 0);
+    document.getElementById('lb-coins').innerText = uData.coins;
+    let c = CHARS[selIdx];
+    document.getElementById('ch-img').innerText = c.e;
+    document.getElementById('ch-name').innerText = c.n;
+    let act = document.getElementById('char-actions');
+    if(uData.unlocked.includes(c.n)) act.innerHTML = `<div class="btn btn-blue" onclick="db.ref('accounts/'+curUser).update({selected:${selIdx}})">ВЫБРАТЬ</div>`;
+    else act.innerHTML = `<div class="btn" onclick="buyChar()">КУПИТЬ ${c.price}💰</div>`;
 }
 
+function switchScr(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+function changeChar(d) { selIdx = (selIdx+d+CHARS.length)%CHARS.length; renderLobby(); }
+
+// --- СИСТЕМА ПОИСКА И ОНЛАЙН РАУНДОВ ---
 function startSearch(m) {
     switchScr('scr-search');
-    let searchRef = db.ref('matchmaking').push({id: curUser, nick: uData.nick, char: uData.selected, time: Date.now()});
+    let searchRef = db.ref('matchmaking').push({id: curUser, nick: uData.nick, char: uData.selected, cups: Object.values(uData.charCups || {}).reduce((a,b)=>a+b, 0)});
     searchRef.onDisconnect().remove();
 
-    db.ref('matchmaking').limitToFirst(2).on('value', s => {
-        let players = [];
-        s.forEach(child => { players.push({...child.val(), key: child.key}); });
-        
-        if(players.length === 2) {
-            let id1 = players[0].id, id2 = players[1].id;
-            let newRoomId = 'room_' + [id1, id2].sort().join('_');
-            
-            if(curUser === id1 || curUser === id2) {
-                db.ref('matchmaking/' + players[0].key).remove();
-                db.ref('matchmaking/' + players[1].key).remove();
-                
-                // Инициализация комнаты мастером (первым игроком)
-                if(curUser === id1) {
-                    db.ref('rooms/' + newRoomId).set({
-                        p1: {id: id1, x: 200, y: ch/2, e: CHARS[players[0].char].e, nick: players[0].nick, cups: 0},
-                        p2: {id: id2, x: 1080, y: ch/2, e: CHARS[players[1].char].e, nick: players[1].nick, cups: 0},
-                        ball: {x: cw/2, y: ch/2, vx: 0, vy: 0},
-                        score: [0, 0],
-                        start: Date.now()
-                    });
-                }
-                joinRoom(newRoomId);
+    let timer = 10;
+    let tInt = setInterval(() => {
+        timer--; document.getElementById('search-timer').innerText = timer;
+        if(timer <= 0) {
+            clearInterval(tInt);
+            // Если никого не нашли за 10 сек, создаем игру с БОТОМ
+            createBotMatch();
+        }
+    }, 1000);
+
+    db.ref('matchmaking').on('value', s => {
+        let q = []; s.forEach(child => { q.push({...child.val(), key: child.key}); });
+        if(q.length >= 2) {
+            clearInterval(tInt);
+            let p1 = q[0], p2 = q[1];
+            let rid = 'room_' + [p1.id, p2.id].sort().join('_');
+            if(curUser === p1.id || curUser === p2.id) {
+                db.ref('matchmaking/' + p1.key).remove();
+                db.ref('matchmaking/' + p2.key).remove();
+                if(curUser === p1.id) initRoom(rid, p1, p2, false);
+                joinRoom(rid);
             }
         }
     });
 }
 
-function joinRoom(id) {
-    roomId = id;
-    db.ref('players_in_match/' + curUser).set({roomId: id});
-    db.ref('players_in_match/' + curUser).onDisconnect().remove();
+function createBotMatch() {
+    db.ref('matchmaking/' + curUser).remove();
+    let rid = 'botroom_' + curUser + '_' + Date.now();
+    let botCharIdx = Math.floor(Math.random()*CHARS.length);
+    let p1 = {id: curUser, nick: uData.nick, char: uData.selected, cups: 0};
+    let p2 = {id: 'bot', nick: 'Бот ' + CHARS[botCharIdx].n, char: botCharIdx, cups: Object.values(uData.charCups || {}).reduce((a,b)=>a+b, 0)};
+    initRoom(rid, p1, p2, true);
+    joinRoom(rid);
+}
 
-    switchScr('scr-game');
-    document.getElementById('game-ui').style.display = 'block';
+function initRoom(rid, p1, p2, isBot) {
+    db.ref('rooms/' + rid).set({
+        p1: {id: p1.id, x: 200, y: ch/2, e: CHARS[p1.char].e, nick: p1.nick, r: 45*CHARS[p1.char].size, p: CHARS[p1.char].power, pin: ''},
+        p2: {id: p2.id, x: 1080, y: ch/2, e: CHARS[p2.char].e, nick: p2.nick, r: 45*CHARS[p2.char].size, p: CHARS[p2.char].power, pin: ''},
+        ball: {x: cw/2, y: ch/2, vx: 0, vy: 0},
+        score: [0, 0],
+        start: Date.now(),
+        isBot: isBot,
+        botLevel: Math.min(1, p2.cups / 1000)
+    });
+}
+
+function joinRoom(rid) {
+    roomId = rid; inGame = true;
+    db.ref('active_matches/' + curUser).set({roomId: rid});
+    switchScr('scr-game'); document.getElementById('game-ui').style.display='block';
     cvs.width = cw; cvs.height = ch;
 
     db.ref('rooms/' + roomId).on('value', s => {
         if(!s.exists()) return;
         let data = s.val();
         mySide = (data.p1.id === curUser) ? 'p1' : 'p2';
-        drawGame(data);
+        renderGame(data);
     });
 }
 
-function drawGame(data) {
+// --- ФИЗИКА И ИНТЕЛЛЕКТ БОТОВ ---
+function renderGame(data) {
     ctx.fillStyle='#2e86de'; ctx.fillRect(0,0,cw,ch);
-    ctx.strokeStyle='#fff'; ctx.lineWidth=10;
-    ctx.strokeRect(40,40,cw-80,ch-80);
+    ctx.strokeStyle='#fff'; ctx.lineWidth=10; ctx.strokeRect(40,40,cw-80,ch-80);
+    ctx.beginPath(); ctx.moveTo(cw/2,40); ctx.lineTo(cw/2,ch-40); ctx.stroke();
     
-    // Отрисовка игроков
+    // Игроки
     [data.p1, data.p2].forEach((p, i) => {
-        ctx.beginPath(); ctx.arc(p.x, p.y, 55, 0, Math.PI*2);
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
         ctx.fillStyle = i === 0 ? '#0066ff' : '#ff3333'; ctx.fill();
-        ctx.font = "40px Arial"; ctx.textAlign = "center";
-        ctx.fillText(p.e, p.x, p.y + 15);
-        ctx.fillStyle = "#fff"; ctx.font = "16px Arial";
-        ctx.fillText(p.nick, p.x, p.y - 65);
+        ctx.font = (p.r*0.8)+"px Arial"; ctx.textAlign="center"; ctx.fillText(p.e, p.x, p.y + p.r/3);
+        ctx.fillStyle="#fff"; ctx.font="14px Arial"; ctx.fillText(p.nick, p.x, p.y - p.r - 10);
+        if(p.pin) { ctx.font="30px Arial"; ctx.fillText(p.pin, p.x, p.y - p.r - 40); }
     });
 
     // Шайба
-    ctx.fillStyle = "#000"; ctx.beginPath();
-    ctx.arc(data.ball.x, data.ball.y, 25, 0, Math.PI*2); ctx.fill();
-
+    ctx.fillStyle="#000"; ctx.beginPath(); ctx.arc(data.ball.x, data.ball.y, 25, 0, Math.PI*2); ctx.fill();
+    
     document.getElementById('sc1').innerText = data.score[0];
     document.getElementById('sc2').innerText = data.score[1];
 
-    // Только "Хозяин" комнаты (p1) просчитывает физику и обновляет Firebase
-    if(mySide === 'p1') updatePhysics(data);
+    // Хозяин комнаты (P1) считает физику
+    if(mySide === 'p1') {
+        let update = { ball: updateBall(data) };
+        if(data.isBot) update.p2 = updateBot(data);
+        db.ref('rooms/' + roomId).update(update);
+        
+        if(Date.now() - data.start > 180000 || data.score[0]>=5 || data.score[1]>=5) finishGame(data);
+    }
 }
 
-function updatePhysics(data) {
+function updateBall(data) {
     let b = data.ball;
-    b.x += b.vx; b.y += b.vy;
-    b.vx *= 0.99; b.vy *= 0.99;
-
-    // Стенки
+    b.x += b.vx; b.y += b.vy; b.vx *= 0.98; b.vy *= 0.98;
     if(b.y < 65 || b.y > ch-65) b.vy *= -1;
     if(b.x < 65 || b.x > cw-65) {
-        if(b.y > ch/2-100 && b.y < ch/2+100) {
-            // Гол!
-            let newScore = [...data.score];
-            newScore[b.x < cw/2 ? 1 : 0]++;
-            db.ref('rooms/' + roomId).update({
-                score: newScore,
-                ball: {x: cw/2, y: ch/2, vx: 0, vy: 0}
-            });
-            return;
-        }
-        b.vx *= -1;
+        if(b.y > ch/2-140 && b.y < ch/2+140) {
+            if(b.x < 0 || b.x > cw) {
+                data.score[b.x < cw/2 ? 1 : 0]++;
+                db.ref('rooms/'+roomId+'/score').set(data.score);
+                return {x: cw/2, y: ch/2, vx: 0, vy: 0};
+            }
+        } else b.vx *= -1;
     }
-
-    // Коллизии с игроками
+    // Коллизии
     [data.p1, data.p2].forEach(p => {
-        let d = Math.hypot(b.x - p.x, b.y - p.y);
-        if(d < 80) {
-            let ang = Math.atan2(b.y - p.y, b.x - p.x);
-            b.vx = Math.cos(ang) * 15;
-            b.vy = Math.sin(ang) * 15;
+        let d = Math.hypot(b.x-p.x, b.y-p.y);
+        if(d < p.r + 25) {
+            let ang = Math.atan2(b.y-p.y, b.x-p.x);
+            let force = Math.max(12, p.p * 10);
+            b.vx = Math.cos(ang) * force; b.vy = Math.sin(ang) * force;
         }
     });
-
-    db.ref('rooms/' + roomId + '/ball').set(b);
+    return b;
 }
 
-// Управление: отправляем только свои координаты в Firebase
+function updateBot(data) {
+    let p = data.p2, b = data.ball, diff = data.botLevel;
+    let tx = b.x, ty = b.y;
+    // Интеллект: защита ворот + агрессия
+    if(b.x < cw/2) { tx = 1100; ty = ch/2 + (b.y - ch/2) * diff; }
+    let dx = tx - p.x, dy = ty - p.y, dist = Math.hypot(dx, dy);
+    if(dist > 5) {
+        p.x += (dx/dist) * p.p * (5 + diff * 5);
+        p.y += (dy/dist) * p.p * (5 + diff * 5);
+    }
+    p.x = Math.max(cw/2+p.r, Math.min(cw-65, p.x));
+    p.y = Math.max(65, Math.min(ch-65, p.y));
+    return p;
+}
+
+// Управление
 cvs.addEventListener('touchmove', e => {
-    e.preventDefault();
-    let r = cvs.getBoundingClientRect();
-    let t = e.touches[0];
-    let x = (t.clientX - r.left) * (cw / r.width);
-    let y = (t.clientY - r.top) * (ch / r.height);
-
-    // Ограничение половины поля
-    if(mySide === 'p1') x = Math.min(cw/2 - 50, Math.max(70, x));
-    else x = Math.max(cw/2 + 50, Math.min(cw - 70, x));
-    y = Math.max(70, Math.min(ch - 70, y));
-
-    db.ref('rooms/' + roomId + '/' + mySide).update({x: x, y: y});
+    if(!inGame) return; e.preventDefault();
+    let r = cvs.getBoundingClientRect(), t = e.touches[0];
+    let x = (t.clientX - r.left) * (cw/r.width), y = (t.clientY - r.top) * (ch/r.height);
+    if(mySide === 'p1') x = Math.min(cw/2-50, Math.max(65, x));
+    else x = Math.max(cw/2+50, Math.min(cw-65, x));
+    db.ref('rooms/'+roomId+'/'+mySide).update({x: x, y: Math.max(65, Math.min(ch-65, y))});
 });
 
+function sendPin(emoji) { db.ref('rooms/'+roomId+'/'+mySide).update({pin: emoji}); setTimeout(()=>db.ref('rooms/'+roomId+'/'+mySide).update({pin:''}), 2000); }
+
+async function finishGame(data) {
+    inGame = false;
+    let win = (mySide==='p1' && data.score[0]>data.score[1]) || (mySide==='p2' && data.score[1]>data.score[0]);
+    let cups = win ? 15 : -10;
+    let coins = win ? 20 : 5;
+    let curChar = CHARS[uData.selected].n;
+    db.ref('accounts/'+curUser).update({ coins: uData.coins + coins });
+    db.ref('accounts/'+curUser+'/charCups/'+curChar).set(Math.max(0, (uData.charCups[curChar]||0) + cups));
+    db.ref('active_matches/'+curUser).remove();
+    document.getElementById('res-title').innerText = win ? "ПОБЕДА!" : "ПОРАЖЕНИЕ";
+    document.getElementById('res-stats').innerText = `${cups} 🏆 | ${coins} 💰`;
+    document.getElementById('mod-result').style.display = 'flex';
+    db.ref('rooms/'+roomId).remove();
+}
 </script>
 </body>
 </html>
