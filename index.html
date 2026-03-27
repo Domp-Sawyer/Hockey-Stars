@@ -21,7 +21,7 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
 .input-field { padding: 10px; font-size: 14px; border: 3px solid #000; border-radius: 10px; width: 260px; margin-bottom: 8px; text-align: center; }
 .top-bar { position: absolute; top: 15px; width: 90%; display: flex; justify-content: space-between; z-index: 20; }
 .stat-box { background: rgba(0,0,0,0.8); padding: 5px 12px; border-radius: 10px; border: 2px solid #fff; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 13px; }
-.overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; display: none; flex-direction: column; align-items: center; justify-content: center; overflow-y: auto; }
 .emoji-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; max-height: 120px; overflow-y: auto; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; }
 .emoji-btn { font-size: 24px; padding: 5px; cursor: pointer; border: 3px solid transparent; border-radius: 8px; }
 .emoji-btn.sel { border-color: #f5d300; background: rgba(245,211,0,0.2); }
@@ -33,9 +33,13 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
 .online-tag { position: absolute; bottom: 15px; right: 20px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; font-size: 11px; color: #00ff00; border: 1px solid #00ff00; }
 #btn-admin { position: fixed; top: 10px; left: 10px; display: none; z-index: 100; font-size: 11px; padding: 5px 10px; min-width: auto; background: #fff; color: #000; pointer-events: auto; }
 #rotate-hint { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #050c1a; z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; }
-.adm-tab { font-size: 11px; padding: 5px; min-width: 80px; }
-.adm-panel-ctn { background:#222; padding:15px; border-radius:10px; margin-bottom:15px; width:95%; max-width: 400px; max-height: 60vh; overflow-y: auto; }
 @media (orientation: portrait) { #rotate-hint { display: flex; } }
+
+/* Оптимизация админ-панели */
+#mod-admin { font-size: 12px; }
+#mod-admin .input-field { padding: 8px; font-size: 12px; width: 100%; margin-bottom: 5px; }
+#mod-admin .btn { font-size: 11px; padding: 6px 10px; margin: 2px; }
+.adm-panel-ctn { background:#222; padding:10px; border-radius:10px; margin-bottom:10px; width:95%; max-width: 350px; }
 </style>
 </head>
 <body>
@@ -91,6 +95,7 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
         <h2 style="color:#f5d300; font-size: 24px; margin-bottom: 20px;">ПОИСК ИГРОКОВ...</h2>
         <div id="search-timer-text" style="font-size: 64px; margin-bottom: 20px;">10</div>
         <div style="font-size: 16px; color: #aaa;">Игроков найдено: <span id="search-players-count" style="color:#fff">1</span></div>
+        <div class="btn btn-red" style="margin-top:20px;" onclick="cancelSearch()">ОТМЕНА</div>
     </div>
 
     <div id="scr-game" class="screen" style="padding:0;">
@@ -133,31 +138,30 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
     </div>
 
     <div id="mod-admin" class="overlay">
-        <h3 style="color:#f5d300; margin-bottom:10px; font-size: 18px;">👑 ПАНЕЛЬ БОГА</h3>
-        <div style="display:flex; gap:5px; margin-bottom:10px;">
-            <div class="btn btn-blue adm-tab" onclick="switchAdmTab('lobby')">ИГРОК</div>
-            <div class="btn btn-blue adm-tab" onclick="switchAdmTab('cups')">КУБКИ</div>
-            <div class="btn btn-blue adm-tab" onclick="switchAdmTab('game')">ИГРА</div>
-        </div>
-
+        <h3 style="color:#f5d300; margin-bottom:10px; font-size: 18px;">👑 АДМИН ПАНЕЛЬ</h3>
+        
         <div id="adm-lobby-tools" class="adm-panel-ctn">
-            <h4 style="font-size: 10px; color: #aaa; margin-bottom: 5px;">УПРАВЛЕНИЕ АККАУНТОМ:</h4>
-            <input type="text" id="adm-id" class="input-field" placeholder="ID игрока" style="width:100%">
-            <input type="number" id="adm-coins" class="input-field" placeholder="Монеты" style="width:100%">
-            <div style="display:flex; gap:5px;">
-                <input type="text" id="adm-nick" class="input-field" placeholder="Новый Ник" style="width:70%">
-                <input type="text" id="adm-av" class="input-field" placeholder="Ава" style="width:30%">
+            <h4 style="font-size: 10px; color: #aaa; margin-bottom: 5px;">УПРАВЛЕНИЕ:</h4>
+            <input type="text" id="adm-id" class="input-field" placeholder="ID игрока">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                <input type="number" id="adm-coins" class="input-field" placeholder="Монеты">
+                <input type="text" id="adm-av" class="input-field" placeholder="Аватар">
+                <input type="text" id="adm-nick" class="input-field" placeholder="Ник" style="grid-column: span 2;">
             </div>
-            <div class="btn btn-blue" style="width:100%" onclick="admSavePlayer()">ОБНОВИТЬ ДАННЫЕ</div>
-            <div class="btn btn-red" style="width:100%; margin-top:10px;" onclick="admResetPlayer()">СБРОСИТЬ АККАУНТ</div>
-            <div class="btn btn-red" style="width:100%; background:#800000; margin-top:5px;" onclick="admDeletePlayer()">УДАЛИТЬ АККАУНТ</div>
+            <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:5px;">
+                <div class="btn btn-blue" style="flex:1" onclick="admSavePlayer()">ОБНОВИТЬ</div>
+                <div class="btn btn-blue" style="flex:1" onclick="admEditPlayerCups()">КУБКИ ПЕРСОВ</div>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:5px;">
+                <div class="btn btn-red" style="flex:1" onclick="admResetPlayer()">СБРОС</div>
+                <div class="btn btn-red" style="flex:1; background:#800000;" onclick="admDeletePlayer()">УДАЛИТЬ</div>
+            </div>
         </div>
 
         <div id="adm-cups-tools" class="adm-panel-ctn" style="display:none;">
-            <h4 style="font-size: 10px; color: #aaa; margin-bottom: 5px;">РЕДАКТОР КУБКОВ:</h4>
-            <input type="text" id="adm-cup-id" class="input-field" placeholder="ID игрока" style="width:100%">
-            <div class="btn btn-blue" style="width:100%" onclick="admLoadCupsPlayer()">НАЙТИ ИГРОКА</div>
-            <div id="adm-cups-list" style="margin-top:15px; display:flex; flex-direction:column; gap:8px;"></div>
+            <h4 style="color:#f5d300; margin-bottom:5px;">РЕДАКТОР КУБКОВ:</h4>
+            <div id="adm-cups-list" style="max-height:150px; overflow-y:auto; margin-bottom:10px;"></div>
+            <div class="btn btn-red" onclick="document.getElementById('adm-cups-tools').style.display='none'; document.getElementById('adm-lobby-tools').style.display='block';">НАЗАД</div>
         </div>
 
         <div id="adm-game-tools" class="adm-panel-ctn" style="display:none;">
@@ -176,7 +180,7 @@ canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2
     <div id="mod-result" class="overlay">
         <h2 id="res-title" style="font-size: 32px;">ПОБЕДА!</h2>
         <div id="res-stats" style="margin: 20px 0; font-size: 18px;"></div>
-        <div class="btn btn-blue" onclick="document.getElementById('mod-result').style.display='none'; clearRoom(); renderLobby();">В ЛОББИ</div>
+        <div class="btn btn-blue" onclick="closeResult()">В ЛОББИ</div>
     </div>
 </div>
 
@@ -209,42 +213,16 @@ let inGame = false, mode = 1, score = [0,0], pList = [], ball = {}, matchStartTi
 let cvs = document.getElementById('cvs'), ctx = cvs.getContext('2d');
 let cw = 1280, ch = 720, dragId = null, cornRad = 120;
 let botsFrozen = false, enemyFrozen = false;
-let searchInt = null;
+
+// Онлайн переменные
+let activeMatchId = null, isHost = false, syncInterval, matchRef, searchInt = null;
 
 window.onload = () => {
     let saved = localStorage.getItem('hockey_id');
     if(saved) db.ref('accounts/' + saved).once('value', s => { 
-        if(s.exists()) {
-            login(saved, s.val()); 
-            checkReconnect();
-        }
+        if(s.exists()) login(saved, s.val()); 
     });
 };
-
-function checkReconnect() {
-    let savedMode = localStorage.getItem('activeMode');
-    let savedStart = localStorage.getItem('matchStart');
-    let pListStr = localStorage.getItem('pListInfo');
-    
-    if(savedMode && savedStart && pListStr) {
-        let elapsed = Date.now() - parseInt(savedStart);
-        if(elapsed < 180000) { // Если матч еще не кончился
-            mode = parseInt(savedMode);
-            matchStartTime = parseInt(savedStart);
-            let savedPlayers = JSON.parse(pListStr);
-            initGame(savedPlayers, true);
-        } else {
-            clearRoom();
-        }
-    }
-}
-
-function clearRoom() {
-    localStorage.removeItem('activeMode');
-    localStorage.removeItem('matchStart');
-    localStorage.removeItem('pListInfo');
-    localStorage.removeItem('scoreInfo');
-}
 
 function getRank(c) {
     for(let i=34; i>=0; i--) if(c>=RANK_THRESHOLDS[i]) return i+1;
@@ -263,12 +241,19 @@ function login(id, data) {
     localStorage.setItem('hockey_id', id);
     if(id === 'domipurple') document.getElementById('btn-admin').style.display = 'block';
     trackPresence();
+    
     db.ref('accounts/' + id).on('value', s => { 
         if(s.exists()){ 
             uData=s.val(); 
             if(!uData.charCups) uData.charCups = {};
-            if(!inGame) renderLobby(); 
+            if(!inGame && document.getElementById('scr-lobby').classList.contains('active')) renderLobby(); 
         }
+    });
+
+    // Реконнект, если обновили страницу во время матча
+    db.ref('active_matches/' + id).once('value', s => {
+        if(s.exists()) joinMatch(s.val());
+        else renderLobby();
     });
 }
 
@@ -307,12 +292,10 @@ function renderLobby() {
     let c = CHARS[selIdx];
     let cCups = uData.charCups[c.n] || 0;
     let cRank = getRank(cCups);
-    
     document.getElementById('ch-img').innerText = c.e;
     document.getElementById('ch-name').innerText = c.n;
     document.getElementById('ch-rank').innerText = `Ранг ${cRank} | 🏆 ${cCups}`;
     document.getElementById('ch-info').innerText = `Сила: ${c.power} | Размер: ${c.size}`;
-    
     let a = document.getElementById('char-actions');
     if(uData.unlocked.includes(c.n)) a.innerHTML = selIdx===uData.selected?`<div class="btn btn-locked">АКТИВЕН</div>`:`<div class="btn btn-blue" onclick="selectChar()">ВЫБРАТЬ</div>`;
     else a.innerHTML = `<div class="btn" onclick="buyChar()">КУПИТЬ: ${c.price}💰</div>`;
@@ -349,18 +332,13 @@ async function saveSettings() {
 }
 function logout() { localStorage.clear(); location.reload(); }
 
-function switchAdmTab(tab) {
-    document.getElementById('adm-lobby-tools').style.display = tab === 'lobby' ? 'block' : 'none';
-    document.getElementById('adm-cups-tools').style.display = tab === 'cups' ? 'block' : 'none';
-    document.getElementById('adm-game-tools').style.display = tab === 'game' ? 'block' : 'none';
-}
-
 function openAdmin() { 
     document.getElementById('mod-admin').style.display='flex'; 
-    switchAdmTab('lobby');
+    document.getElementById('adm-lobby-tools').style.display = inGame ? 'none' : 'block';
+    document.getElementById('adm-game-tools').style.display = inGame ? 'block' : 'none';
+    document.getElementById('adm-cups-tools').style.display = 'none';
 }
 function closeAdmin() { document.getElementById('mod-admin').style.display='none'; }
-
 async function admSavePlayer() {
     let id = document.getElementById('adm-id').value.trim().toLowerCase();
     let co = document.getElementById('adm-coins').value;
@@ -381,39 +359,41 @@ async function admDeletePlayer() {
     if(id !== "") { await db.ref('accounts/'+id).remove(); alert("Аккаунт удален"); }
 }
 
-async function admLoadCupsPlayer() {
-    let id = document.getElementById('adm-cup-id').value.trim().toLowerCase();
-    if(!id) return;
+// Редактор кубков оптимизированный
+async function admEditPlayerCups() {
+    let id = document.getElementById('adm-id').value.trim().toLowerCase();
+    if(!id) return alert("Введите ID игрока");
     let s = await db.ref('accounts/'+id).once('value');
     if(!s.exists()) return alert("Игрок не найден");
+    
     let d = s.val();
     let html = '';
     d.unlocked.forEach(char => {
         let cups = (d.charCups && d.charCups[char]) ? d.charCups[char] : 0;
         let cData = CHARS.find(x => x.n === char);
-        html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#333; padding:8px; border-radius:8px;">
-            <span>${cData.e} ${char}</span>
-            <span style="color:#ff9000">🏆 ${cups}</span>
-            <div class="btn btn-blue" style="min-width:auto; padding:5px; font-size:10px;" onclick="admSetCups('${id}', '${char}')">ИЗМЕНИТЬ</div>
+        html += `<div style="display:flex; align-items:center; gap:5px; margin-bottom:5px;">
+            <span style="width:60px; color:#fff">${cData.e} ${char}</span>
+            <input type="number" id="adm-c-${char}" value="${cups}" class="input-field" style="width:70px; margin:0; padding:5px;">
+            <div class="btn btn-blue" style="min-width:auto; padding:5px 10px; margin:0;" onclick="admSaveCup('${id}', '${char}')">ОК</div>
         </div>`;
     });
     document.getElementById('adm-cups-list').innerHTML = html;
+    document.getElementById('adm-cups-tools').style.display = 'block';
+    document.getElementById('adm-lobby-tools').style.display = 'none';
 }
-
-function admSetCups(id, char) {
-    let c = prompt(`Сколько кубков поставить на ${char}?`);
-    if(c !== null && !isNaN(c)) {
-        db.ref('accounts/'+id+'/charCups/'+char).set(parseInt(c)).then(() => admLoadCupsPlayer());
-    }
+async function admSaveCup(id, char) {
+    let v = parseInt(document.getElementById('adm-c-'+char).value);
+    await db.ref('accounts/'+id+'/charCups/'+char).set(v);
+    alert("Кубки сохранены");
 }
 
 function admFreezeAll(s) { botsFrozen = s; closeAdmin(); }
 function admFreezeEnemy(s) { enemyFrozen = s; closeAdmin(); }
-function admEnd(win) { score[win?0:1] = 5; endMatch(); closeAdmin(); }
+function admEnd(win) { score[win?0:1] = 5; if(isHost) db.ref('matches/'+activeMatchId+'/score').set(score); closeAdmin(); }
 
 function sendPin(e, targetId = null) {
     let p = pList.find(x => targetId ? x.id === targetId : x.isMe);
-    if(p) { p.activePin = e; p.pinTimer = 100; }
+    if(p) { p.activePin = e; p.pinTimer = 100; if(p.isMe && activeMatchId) db.ref(`matches/${activeMatchId}/p/${curUser}/pin`).set({e:e, t:Date.now()}); }
 }
 
 window.addEventListener('keydown', (e) => {
@@ -429,106 +409,156 @@ cvs.addEventListener('touchstart', startDrag); cvs.addEventListener('touchmove',
 cvs.addEventListener('mousedown', startDrag); window.addEventListener('mousemove', moveDrag);
 window.addEventListener('mouseup', () => dragId = null);
 
-// ПОИСК ИГРОКОВ (МАТЧМЕЙКИНГ)
-function startSearch(m) {
+// --- ОНЛАЙН МАТЧМЕЙКИНГ ---
+async function startSearch(m) { 
     mode = m; 
-    score = [0,0]; 
-    botsFrozen = false; 
-    enemyFrozen = false;
     switchScr('scr-search');
-    
-    let timer = 10;
-    document.getElementById('search-timer-text').innerText = timer;
-    
-    let foundPlayers = [{
-        id: curUser, nick: uData.nick, char: uData.selected, isMe: true
-    }];
-    
-    document.getElementById('search-players-count').innerText = "1 / " + (mode===1?2:4);
+    let qRef = db.ref('queue/m' + m + '/' + curUser);
+    let myCups = uData.charCups[CHARS[uData.selected].n] || 0;
+    let myData = { id: curUser, nick: uData.nick, sel: uData.selected, cups: myCups };
+    await qRef.set(myData);
 
-    searchInt = setInterval(() => {
-        timer--;
-        document.getElementById('search-timer-text').innerText = timer;
+    let t = 10;
+    document.getElementById('search-timer-text').innerText = t;
+    
+    searchInt = setInterval(async () => {
+        t--;
+        if(t >= 0) document.getElementById('search-timer-text').innerText = t;
         
-        // Симуляция поиска: шанс найти реального игрока каждую секунду
-        if(timer > 0 && Math.random() < 0.25 && foundPlayers.length < (mode===1?2:4)) {
-            // Берем рандомного чувака из топ игроков как визуального "найденного игрока"
-            db.ref('accounts').limitToFirst(20).once('value', s => {
-                let keys = Object.keys(s.val());
-                let rid = keys[Math.floor(Math.random()*keys.length)];
-                if(!foundPlayers.find(x => x.id === rid)) {
-                    let d = s.val()[rid];
-                    foundPlayers.push({id: rid, nick: d.nick, char: d.selected || 0, isMe: false, fakeP: true});
-                    document.getElementById('search-players-count').innerText = foundPlayers.length + " / " + (mode===1?2:4);
+        let qs = await db.ref('queue/m' + m).once('value');
+        let q = qs.val() || {};
+        let players = Object.keys(q);
+        
+        document.getElementById('search-players-count').innerText = players.length + " / " + (m===1?2:4);
+
+        if(players.length >= (m === 1 ? 2 : 4) && players[0] === curUser) {
+            // Создаем матч (мы хост)
+            clearInterval(searchInt);
+            let matchId = 'm_' + Date.now();
+            let matchData = { type: m, host: curUser, start: Date.now(), score: [0,0], p: {}, b: {x:cw/2, y:ch/2, vx:0, vy:0} };
+            let team = 1, c1 = 0;
+            for(let i=0; i<(m===1?2:4); i++){
+                let pid = players[i];
+                matchData.p[pid] = { id: pid, t: team, x: team===1?200:1080, y: ch/2, char: q[pid].sel, nick: q[pid].nick, isBot: false, cups: q[pid].cups };
+                if(team===1) c1++;
+                if(m===1) team = 2; else if(c1===2) team = 2;
+                await db.ref('queue/m' + m + '/' + pid).remove();
+                await db.ref('active_matches/' + pid).set(matchId);
+            }
+            await db.ref('matches/' + matchId).set(matchData);
+        }
+
+        if(t <= 0) {
+            // Время вышло, добавляем ботов
+            clearInterval(searchInt);
+            await qRef.remove();
+            startBotMatch(m, myData);
+        }
+    }, 1000);
+
+    // Слушаем, закинули ли нас в матч
+    db.ref('active_matches/' + curUser).on('value', s => {
+        if(s.exists() && activeMatchId === null) {
+            clearInterval(searchInt);
+            joinMatch(s.val());
+        }
+    });
+}
+
+function cancelSearch() {
+    clearInterval(searchInt);
+    db.ref('queue/m' + mode + '/' + curUser).remove();
+    db.ref('active_matches/' + curUser).off();
+    renderLobby();
+}
+
+async function startBotMatch(m, myData) {
+    let matchId = 'b_' + curUser + '_' + Date.now();
+    let matchData = { type: m, host: curUser, start: Date.now(), score: [0,0], p: {}, b: {x:cw/2, y:ch/2, vx:0, vy:0} };
+    matchData.p[curUser] = { id: curUser, t: 1, x: 200, y: ch/2, char: myData.sel, nick: myData.nick, isBot: false, cups: myData.cups };
+
+    let getBot = (t) => {
+        let bChar = Math.floor(Math.random() * CHARS.length);
+        return { id: 'bot_'+Math.random(), t: t, x: t===1?200:1080, y: t===1?150:570, char: bChar, nick: 'Бот ' + CHARS[bChar].n, isBot: true, cups: myData.cups };
+    };
+
+    matchData.p['bot1'] = getBot(2);
+    matchData.p['bot1'].y = ch/2;
+    if(m===2) {
+        matchData.p['bot2'] = getBot(1);
+        matchData.p['bot3'] = getBot(2);
+    }
+
+    await db.ref('matches/' + matchId).set(matchData);
+    await db.ref('active_matches/' + curUser).set(matchId);
+}
+
+// Присоединение и синхронизация матча
+async function joinMatch(mId) {
+    activeMatchId = mId;
+    db.ref('active_matches/' + curUser).off();
+    
+    let mSnap = await db.ref('matches/' + mId).once('value');
+    let mData = mSnap.val();
+    if(!mData) { endMatch(); return; }
+
+    switchScr('scr-game'); document.getElementById('game-ui').style.display='block';
+    cvs.width=cw; cvs.height=ch; inGame=true; 
+
+    isHost = mData.host === curUser;
+    matchStartTime = mData.start;
+    mode = mData.type;
+    score = mData.score || [0,0];
+    botsFrozen=false; enemyFrozen=false;
+
+    pList = [];
+    let pKeys = Object.keys(mData.p);
+    pKeys.forEach((k, idx) => {
+        let pd = mData.p[k];
+        let c = CHARS[pd.char];
+        let role = (mode === 2 && (idx === 1 || idx === 3)) ? 'gk' : 'striker';
+        pList.push({
+            id: pd.id, x: pd.x, y: pd.y, lastX: pd.x, lastY: pd.y, r: 30*c.size, p: c.power*8, e: c.e, t: pd.t, 
+            isMe: pd.id === curUser, isBot: pd.isBot, nick: pd.nick, cups: pd.cups, role: role, stuckTicks: 0, pinTimer: 0, activePin: ''
+        });
+    });
+
+    ball = mData.b || {x:cw/2, y:ch/2, vx:0, vy:0, r:28};
+
+    // Синхронизация 20 раз в секунду
+    syncInterval = setInterval(() => {
+        if(!inGame) return clearInterval(syncInterval);
+        let me = pList.find(x => x.isMe);
+        if(me) db.ref(`matches/${mId}/p/${curUser}`).update({x: Math.round(me.x), y: Math.round(me.y)});
+
+        if(isHost) {
+            db.ref(`matches/${mId}/b`).update({x: Math.round(ball.x), y: Math.round(ball.y), vx: ball.vx, vy: ball.vy});
+            pList.forEach(p => {
+                if(p.isBot) db.ref(`matches/${mId}/p/${p.id}`).update({x: Math.round(p.x), y: Math.round(p.y)});
+            });
+        }
+    }, 50);
+
+    matchRef = db.ref('matches/' + mId);
+    matchRef.on('value', s => {
+        let d = s.val();
+        if(!d) { inGame = false; return; }
+        if(!isHost && d.b) { ball.x = d.b.x; ball.y = d.b.y; ball.vx = d.b.vx; ball.vy = d.b.vy; }
+        score = d.score || score;
+        if(d.p) {
+            Object.keys(d.p).forEach(k => {
+                let pp = pList.find(x => x.id === k);
+                if(pp) {
+                    if(k !== curUser && (!isHost || !pp.isBot)) { pp.x = d.p[k].x; pp.y = d.p[k].y; }
+                    if(d.p[k].pin && d.p[k].pin.t > Date.now() - 3000 && pp.activePin !== d.p[k].pin.e) {
+                        pp.activePin = d.p[k].pin.e; pp.pinTimer = 100;
+                    }
                 }
             });
         }
+        if(d.ended) showResult();
+    });
 
-        if(timer <= 0) {
-            clearInterval(searchInt);
-            initGame(foundPlayers, false);
-        }
-    }, 1000);
-}
-
-function initGame(foundList, isReconnect = false) {
-    switchScr('scr-game'); document.getElementById('game-ui').style.display='block';
-    cvs.width=cw; cvs.height=ch; inGame=true; 
-    
-    if(!isReconnect) {
-        matchStartTime = Date.now();
-        localStorage.setItem('activeMode', mode);
-        localStorage.setItem('matchStart', matchStartTime);
-        
-        pList = [];
-        let maxP = mode === 1 ? 2 : 4;
-        
-        // Расставляем найденных
-        foundList.forEach((fp, i) => {
-            let c = CHARS[fp.char];
-            let team = (i % 2 === 0) ? 1 : 2; // Чередуем команды
-            let role = (i > 1) ? 'gk' : 'striker';
-            pList.push({
-                id: i+1, x: team===1?200:1080, y: role==='gk'?(team===1?150:570):ch/2, 
-                r: 30*c.size, p: c.power*(role==='gk'?5:8), e: c.e, t: team, 
-                isMe: fp.isMe, nick: fp.nick, role: role, stuckTicks: 0, pinTimer: 0, activePin: '', isBot: fp.fakeP||false
-            });
-        });
-
-        // Заполняем пустые слоты ботами
-        for(let i = pList.length; i < maxP; i++) {
-            let bChar = Math.floor(Math.random()*CHARS.length);
-            let c = CHARS[bChar];
-            let team = (i % 2 === 0) ? 1 : 2;
-            let role = (i > 1) ? 'gk' : 'striker';
-            pList.push({
-                id: i+1, x: team===1?200:1080, y: role==='gk'?(team===1?150:570):ch/2, 
-                r: 30*c.size, p: c.power*(role==='gk'?5.5:6), e: c.e, t: team, 
-                isMe: false, nick: 'Бот ' + c.n, role: role, stuckTicks: 0, pinTimer: 0, activePin: '', isBot: true
-            });
-        }
-        
-        // Сохраняем инфу о списке для реконнекта (без координат)
-        let saveInfo = pList.map(p => ({id: p.id, t: p.t, isMe: p.isMe, nick: p.nick, role: p.role, isBot: p.isBot, charId: CHARS.findIndex(x=>x.e===p.e)}));
-        localStorage.setItem('pListInfo', JSON.stringify(saveInfo));
-        
-    } else {
-        // Восстанавливаем из сохраненки
-        let saved = localStorage.getItem('scoreInfo');
-        if(saved) score = JSON.parse(saved);
-        
-        pList = [];
-        foundList.forEach((fp) => {
-            let c = CHARS[fp.charId];
-            pList.push({
-                id: fp.id, x: fp.t===1?200:1080, y: fp.role==='gk'?(fp.t===1?150:570):ch/2, 
-                r: 30*c.size, p: c.power*(fp.role==='gk'?5.5:8), e: c.e, t: fp.t, 
-                isMe: fp.isMe, nick: fp.nick, role: fp.role, stuckTicks: 0, pinTimer: 0, activePin: '', isBot: fp.isBot
-            });
-        });
-    }
-
-    ball = {x:cw/2, y:ch/2, vx:0, vy:0, r:28};
     requestAnimationFrame(loop);
 }
 
@@ -537,7 +567,7 @@ function loop() {
     let tr = Math.max(0, 180000 - (Date.now() - matchStartTime));
     let mins = Math.floor(tr / 60000), secs = Math.floor((tr % 60000) / 1000);
     document.getElementById('game-timer').innerText = `0${mins}:${secs<10?'0':''}${secs}`;
-    if(tr <= 0) { endMatch(); return; }
+    if(tr <= 0) { if(isHost) endMatch(); return; }
 
     ctx.fillStyle='#2e86de'; ctx.fillRect(0,0,cw,ch);
     ctx.strokeStyle='#fff'; ctx.lineWidth=12;
@@ -564,97 +594,91 @@ function loop() {
         if(ball.x < 40+ball.r || ball.x > cw-40-ball.r) {
             if(ball.y > ch/2-140 && ball.y < ch/2+140) { 
                 if(ball.x<0 || ball.x>cw) { 
-                    score[ball.x<cw/2?1:0]++; 
-                    localStorage.setItem('scoreInfo', JSON.stringify(score));
-                    if(score[0]>=5 || score[1]>=5) endMatch(); else resetPositions(); 
+                    if(isHost) {
+                        score[ball.x<cw/2?1:0]++; 
+                        db.ref('matches/'+activeMatchId+'/score').set(score);
+                        if(score[0]>=5 || score[1]>=5) endMatch(); else resetPositions(); 
+                    }
                 } 
             }
             else { ball.vx*=-0.9; ball.x = Math.max(40+ball.r, Math.min(cw-40-ball.r, ball.x)); }
         }
     }
 
-    // Уровень ИИ (1-10) зависит от кубков игрока
-    let pCups = uData.charCups[CHARS[uData.selected].n] || 0;
-    let botLvl = Math.min(10, Math.floor(pCups / 100) + 1);
-    let predFrames = botLvl * 2; // Чем выше уровень, тем лучше предсказывают будущее шайбы
-
     pList.forEach(p => {
-        let isFrozen = botsFrozen || (enemyFrozen && p.t === 2);
+        let isFrz = botsFrozen || (enemyFrozen && p.t === 2);
         
-        // Считаем скорость игрока для улучшенной физики
         let pvx = p.x - (p.lastX||p.x);
         let pvy = p.y - (p.lastY||p.y);
         p.lastX = p.x; p.lastY = p.y;
 
-        // ИИ ботов
-        if(!p.isMe && !isFrozen && p.isBot) {
-            // Умный предикт шайбы
-            let tx = ball.x + (ball.vx * predFrames);
-            let ty = ball.y + (ball.vy * predFrames);
-            
-            tx = Math.max(100, Math.min(cw-100, tx));
-            ty = Math.max(100, Math.min(ch-100, ty));
+        // --- УМНЫЕ БОТЫ (Выполняется только на хосте) ---
+        if(!p.isMe && p.isBot && isHost && !isFrz) {
+            let diff = Math.min(1, p.cups / 1000); // Множитель сложности (до 1000 кубков)
+            let pX = ball.x + ball.vx * 15 * diff; // Предсказание траектории
+            let pY = ball.y + ball.vy * 15 * diff;
+            let tx = pX, ty = pY;
+            let dX = p.t === 1 ? 150 : cw - 150; // Ворота защиты
+            let isDef = p.role === 'gk' || (p.role !== 'striker' && diff > 0.4 && Math.abs(ball.x - dX) < cw/2);
 
-            if(p.role==='gk'){ 
-                tx=(p.t===2)?cw-150:150; 
-                ty=Math.max(ch/2-110, Math.min(ch/2+110, ty)); 
-                // Перехват если шайба близко
-                if(Math.hypot(ball.x-p.x, ball.y-p.y) < 250) tx=ball.x; 
+            // Тактика: Защита или Нападение
+            if(isDef) {
+                tx = dX; ty = Math.max(ch/2 - 110, Math.min(ch/2 + 110, pY)); // Стоять у ворот
+                if(Math.abs(ball.x - p.x) < 250 * diff) { tx = pX; ty = pY; } // Перехват если близко
             } else {
-                // Командная игра: если напарник ближе, помогаем позиционно
-                let mate = pList.find(m => m.t === p.t && m.id !== p.id && m.role !== 'gk');
-                if(mate && Math.hypot(ball.x-mate.x, ball.y-mate.y) < Math.hypot(ball.x-p.x, ball.y-p.y) && botLvl > 3) {
-                    if((ball.x > cw/2 && p.t === 1) || (ball.x < cw/2 && p.t === 2)) {
-                        tx = (p.t===1) ? cw/2 : cw/2; // Идти в центр на пас
-                        ty = ch/2 + (Math.random()*100 - 50);
-                    } else {
-                        tx = (p.t===1) ? 250 : cw-250; // Вернуться в защиту
-                    }
+                if(diff > 0.6 && Math.sign(ball.vx) === (p.t === 1 ? -1 : 1)) { 
+                    tx = pX > cw/2 ? cw/2 : pX; // Возврат назад если мяч летит в наши ворота
                 }
             }
 
-            // Анти-застревание
-            if(Math.hypot(ball.x-p.x, ball.y-p.y) < p.r+ball.r+5 && (ball.x<150||ball.x>cw-150)) p.stuckTicks++; else p.stuckTicks=0;
-            if(p.stuckTicks>45) { tx=cw/2; ty=ch/2; if(p.stuckTicks>90) p.stuckTicks=0; }
-            
-            let dx=tx-p.x, dy=ty-p.y, d=Math.hypot(dx,dy);
-            if(d>5){ p.x+=(dx/d)*p.p; p.y+=(dy/d)*p.p; }
-            
-            // Защита от вылета за карту
-            p.x=Math.max(p.t===2?cw/2+p.r:p.r+45, Math.min(p.t===2?cw-p.r-45:cw/2-p.r, p.x));
-            p.y=Math.max(p.r+45, Math.min(ch-p.r-45, p.y));
-            if(p.pinTimer <= 0 && Math.random() < 0.002) sendPin(PINS[Math.floor(Math.random()*PINS.length)], p.id);
+            // Антизастревание
+            if(Math.hypot(ball.x - p.x, ball.y - p.y) < p.r + ball.r + 5 && (ball.x < 150 || ball.x > cw - 150)) p.stuckTicks++; else p.stuckTicks = 0;
+            if(p.stuckTicks > 30) { tx = cw/2; ty = ch/2; if(p.stuckTicks > 60) p.stuckTicks = 0; }
+
+            // Движение
+            let dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
+            if(d > 5){ p.x += (dx / d) * p.p * (0.5 + diff * 0.5); p.y += (dy / d) * p.p * (0.5 + diff * 0.5); }
+            p.x = Math.max(p.t === 2 ? cw/2 + p.r : p.r + 45, Math.min(p.t === 2 ? cw - p.r - 45 : cw/2 - p.r, p.x));
+            p.y = Math.max(p.r + 45, Math.min(ch - p.r - 45, p.y));
+
+            // Эмоции ботов
+            if(p.pinTimer <= 0 && Math.random() < 0.001 * diff) {
+                p.activePin = PINS[Math.floor(Math.random()*PINS.length)]; p.pinTimer = 100;
+                db.ref(`matches/${activeMatchId}/p/${p.id}/pin`).set({e:p.activePin, t:Date.now()});
+            }
         }
 
-        // Физика столкновения с улучшенной инерцией
-        if(Math.hypot(ball.x-p.x, ball.y-p.y) < p.r+ball.r) {
-            let ang=Math.atan2(ball.y-p.y, ball.x-p.x);
-            let force = Math.max(12, p.p*1.5);
-            // Добавляем вектор движения игрока к вектору полета шайбы
-            ball.vx = Math.cos(ang)*force + pvx*0.7; 
-            ball.vy = Math.sin(ang)*force + pvy*0.7;
-            ball.x = p.x+Math.cos(ang)*(p.r+ball.r+2); 
-            ball.y = p.y+Math.sin(ang)*(p.r+ball.r+2);
+        // --- УЛУЧШЕННАЯ ФИЗИКА (Выполняется только на хосте или локально для мгновенной реакции) ---
+        let dx = ball.x - p.x, dy = ball.y - p.y, dist = Math.hypot(dx, dy);
+        if(dist < p.r + ball.r) {
+            let nx = dx / dist, ny = dy / dist;
+            // Учитываем скорость игрока для силы удара
+            let hitSpd = Math.max(12, Math.hypot(pvx, pvy) * 1.2 + p.p * 1.5);
+            if(!isHost && !p.isMe) hitSpd = 0; // Чужих игроков рассчитывает хост
+            if(isHost || p.isMe) {
+                ball.vx = nx * hitSpd; ball.vy = ny * hitSpd;
+                ball.x = p.x + nx * (p.r + ball.r + 2); ball.y = p.y + ny * (p.r + ball.r + 2);
+            }
         }
 
         // Отрисовка игрока
         ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fillStyle=p.t===1?'#0066ff':'#ff3333'; ctx.fill();
         ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.stroke();
-        ctx.font=p.r+"px Arial"; ctx.textAlign="center"; ctx.fillText(isFrozen?'🥶':p.e, p.x, p.y+p.r/3);
+        ctx.font=p.r+"px Arial"; ctx.textAlign="center"; ctx.fillText(isFrz?'🥶':p.e, p.x, p.y+p.r/3);
         
         // Отрисовка ника
-        ctx.font="14px Arial"; ctx.fillStyle="#fff"; 
-        ctx.fillText(p.nick, p.x, p.y - p.r - 8);
+        ctx.fillStyle = "#fff"; ctx.font = "14px Arial";
+        ctx.fillText(p.nick, p.x, p.y - p.r - 10);
 
-        // Отрисовка пина
+        // Отрисовка эмодзи (пина)
         if(p.pinTimer > 0) {
-            ctx.fillStyle="white"; ctx.beginPath(); ctx.roundRect(p.x-35, p.y-p.r-70, 70, 50, 10); ctx.fill();
-            ctx.font="32px Arial"; ctx.fillStyle="black"; ctx.fillText(p.activePin, p.x, p.y-p.r-35);
+            ctx.fillStyle="white"; ctx.beginPath(); ctx.roundRect(p.x-35, p.y-p.r-90, 70, 50, 10); ctx.fill();
+            ctx.font="32px Arial"; ctx.fillStyle="black"; ctx.fillText(p.activePin, p.x, p.y-p.r-55);
             p.pinTimer--;
         }
     });
-
-    // Отрисовка черной шайбы
+    
+    // Черная шайба
     ctx.fillStyle="#000"; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill();
     
     document.getElementById('sc1').innerText=score[0]; document.getElementById('sc2').innerText=score[1];
@@ -663,32 +687,49 @@ function loop() {
 
 function resetPositions() {
     ball={x:cw/2, y:ch/2, vx:0, vy:0, r:28};
-    pList.forEach(p=>{ 
-        p.x=p.t===1?200:1080; 
-        p.y=p.role==='gk'?(p.t===1?150:570):ch/2; 
+    let c1 = 0, c2 = 0;
+    pList.forEach(p => { 
+        p.x = p.t === 1 ? 200 : 1080; 
+        if(p.t===1) { p.y = c1===0 ? ch/2 : (c1===1 ? 150 : 570); c1++; }
+        else { p.y = c2===0 ? ch/2 : (c2===1 ? 570 : 150); c2++; }
         p.stuckTicks=0; 
     });
 }
 
-function endMatch() {
+async function endMatch() {
+    if(isHost && activeMatchId) await db.ref('matches/' + activeMatchId).update({ended: true});
+}
+
+async function showResult() {
     inGame=false;
-    clearRoom(); // Сбрасываем реконнект
-    let myTeam = pList.find(x => x.isMe).t;
-    let myScore = myTeam === 1 ? score[0] : score[1];
-    let enScore = myTeam === 1 ? score[1] : score[0];
+    clearInterval(syncInterval);
+    if(matchRef) matchRef.off();
     
-    let result = myScore > enScore ? 1 : (enScore > myScore ? -1 : 0);
+    let myTeam = pList.find(x => x.isMe)?.t || 1;
+    let enemyTeam = myTeam === 1 ? 2 : 1;
+    let result = score[myTeam-1] > score[enemyTeam-1] ? 1 : (score[enemyTeam-1] > score[myTeam-1] ? -1 : 0);
+    
     let cPlus = result === 1 ? 15 : (result === -1 ? -10 : 0);
     let mPlus = result === 1 ? Math.floor(Math.random()*10)+5 : 0;
     let activeChar = CHARS[uData.selected].n;
     let currentCups = uData.charCups[activeChar] || 0;
     
-    db.ref('accounts/'+curUser+'/charCups').update({[activeChar]: Math.max(0, currentCups + cPlus)});
-    db.ref('accounts/'+curUser).update({coins: uData.coins + mPlus});
+    await db.ref('accounts/'+curUser+'/charCups').update({[activeChar]: Math.max(0, currentCups + cPlus)});
+    await db.ref('accounts/'+curUser).update({coins: uData.coins + mPlus});
+    if(activeMatchId) {
+        await db.ref('active_matches/' + curUser).remove();
+        if(isHost) setTimeout(() => db.ref('matches/' + activeMatchId).remove(), 5000);
+    }
+    activeMatchId = null;
     
     document.getElementById('res-title').innerText = result === 1 ? "ПОБЕДА!" : (result === -1 ? "ПОРАЖЕНИЕ" : "НИЧЬЯ");
     document.getElementById('res-stats').innerText = `${cPlus} 🏆 | ${mPlus} 💰`;
     document.getElementById('mod-result').style.display = 'flex';
+}
+
+function closeResult() {
+    document.getElementById('mod-result').style.display='none';
+    renderLobby();
 }
 
 function renderLB() {
