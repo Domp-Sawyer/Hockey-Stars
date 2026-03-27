@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Hockey Stars</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<style>
+* { box-sizing: border-box; font-family: 'Arial Black', sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+body { background: #000; color: #fff; overflow: hidden; width: 100vw; height: 100dvh; display: flex; align-items: center; justify-content: center; }
+#game-container { position: relative; width: 100dvw; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0b1c3c; padding-bottom: env(safe-area-inset-bottom, 20px); }
+canvas { max-width: 95%; max-height: 80dvh; aspect-ratio: 16 / 9; background: #2e86de; border: 4px solid #fff; border-radius: 60px; display: block; cursor: crosshair; }
+.screen { position: absolute; width: 100%; height: 100%; display: none; background: radial-gradient(circle, #1a3a7a, #0b1c3c); flex-direction: column; align-items: center; justify-content: center; z-index: 10; padding: 20px; text-align: center; }
+.active { display: flex; }
+.btn { background: #f5d300; color: #000; border: 3px solid #000; border-radius: 10px; padding: 8px 16px; font-size: 14px; cursor: pointer; box-shadow: 0 4px 0 #000; text-transform: uppercase; margin: 4px; min-width: 120px; text-align: center; }
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
+.btn-red { background: #ff4747; color: #fff; }
+.btn-blue { background: #0084ff; color: #fff; }
+.btn-locked { background: #444; color: #888; border-color: #222; box-shadow: 0 4px 0 #222; }
+.input-field { padding: 10px; font-size: 14px; border: 3px solid #000; border-radius: 10px; width: 260px; margin-bottom: 8px; text-align: center; }
+.top-bar { position: absolute; top: 15px; width: 90%; display: flex; justify-content: space-between; z-index: 20; }
+.stat-box { background: rgba(0,0,0,0.8); padding: 5px 12px; border-radius: 10px; border: 2px solid #fff; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 13px; }
+.overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.emoji-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; max-height: 120px; overflow-y: auto; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; }
+.emoji-btn { font-size: 24px; padding: 5px; cursor: pointer; border: 3px solid transparent; border-radius: 8px; }
+.emoji-btn.sel { border-color: #f5d300; background: rgba(245,211,0,0.2); }
+#game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; z-index: 50; }
+.score-board { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: #000; border: 3px solid #fff; padding: 4px 20px; border-radius: 12px; font-size: 20px; pointer-events: auto; display: flex; gap: 15px; align-items: center; }
+.pins-container { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; pointer-events: auto; background: rgba(0,0,0,0.5); padding: 15px 10px; border-radius: 20px; border: 2px solid rgba(255,255,255,0.2); }
+.pin-btn { font-size: 28px; cursor: pointer; transition: transform 0.1s; position: relative; }
+.pin-btn::before { content: attr(data-key); position: absolute; left: -18px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #aaa; }
+.online-tag { position: absolute; bottom: 15px; right: 20px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; font-size: 11px; color: #00ff00; border: 1px solid #00ff00; }
+#btn-admin { position: fixed; top: 10px; left: 10px; display: none; z-index: 100; font-size: 11px; padding: 5px 10px; min-width: auto; background: #fff; color: #000; pointer-events: auto; }
+#rotate-hint { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #050c1a; z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.adm-tab { font-size: 11px; padding: 5px; min-width: 80px; }
+.adm-panel-ctn { background:#222; padding:15px; border-radius:10px; margin-bottom:15px; width:95%; max-width: 400px; max-height: 60vh; overflow-y: auto; }
+@media (orientation: portrait) { #rotate-hint { display: flex; } }
+</style>
+</head>
+<body>
+
+<div id="rotate-hint"><h2>ПОВЕРНИТЕСЬ ГОРИЗОНТАЛЬНО</h2></div>
+<div id="btn-admin" class="btn" onclick="openAdmin()">АДМИН</div>
+
+<div id="game-container">
+  <div id="scr-auth" class="screen active">
+    <h1 style="color:#f5d300;margin-bottom:20px;font-size:28px;">HOCKEY STARS</h1>
+    <input type="text" id="auth-user" class="input-field" placeholder="Логин (ID)">
+    <input type="password" id="auth-pass" class="input-field" placeholder="Пароль">
+    <div class="btn" onclick="tryAuth()">ВХОД / РЕГИСТРАЦИЯ</div>
+  </div>
+
+  <div id="scr-lobby" class="screen">
+    <div class="top-bar">
+      <div class="stat-box" onclick="openSettings()" style="cursor:pointer">
+        <div style="display:flex;align-items:center;gap:5px;"><span id="lb-av" style="font-size:18px;"></span><span id="lb-nick"></span> ⚙️</div>
+        <div style="font-size:10px;color:#aaa;">ID: <span id="lb-id"></span></div>
+      </div>
+      <div class="stat-box">
+        <span style="color:#ff9000">🏆 <span id="lb-cups">0</span></span>
+        <span style="color:#f5d300">💰 <span id="lb-coins">0</span></span>
+      </div>
+    </div>
+    <div style="margin-top:30px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div class="btn" style="min-width:40px;padding:5px;" onclick="changeChar(-1)">◄</div>
+        <div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:15px;border:2px solid #fff;min-width:160px;">
+          <div id="ch-img" style="font-size:50px;"></div>
+          <div id="ch-name" style="font-size:18px;color:#f5d300;"></div>
+          <div id="ch-rank" style="color:#ff9000;font-size:14px;margin:4px 0;"></div>
+          <div id="ch-info" style="font-size:11px;color:#ddd;"></div>
+        </div>
+        <div class="btn" style="min-width:40px;padding:5px;" onclick="changeChar(1)">►</div>
+      </div>
+      <div id="char-actions"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <div class="btn btn-blue" onclick="startSearch(1)">1 VS 1</div>
+        <div class="btn btn-red" onclick="startSearch(2)">2 VS 2</div>
+      </div>
+      <div class="btn btn-blue" style="width:100%;font-size:12px;" onclick="renderLB()">ТОП ИГРОКОВ</div>
+    </div>
+    <div class="online-tag">В СЕТИ: <span id="online-count">1</span></div>
+  </div>
+
+  <div id="scr-search" class="screen">
+    <h2 style="color:#f5d300;font-size:24px;margin-bottom:20px;">ПОИСК ИГРОКОВ...</h2>
+    <div id="search-timer-text" style="font-size:64px;margin-bottom:20px;">10</div>
+    <div style="font-size:16px;color:#aaa;">Найдено: <span id="search-players-count" style="color:#fff">1</span></div>
+    <div class="btn btn-red" style="margin-top:20px;" onclick="cancelSearch()">ОТМЕНА</div>
+  </div>
+
+  <div id="scr-game" class="screen" style="padding:0;">
+    <canvas id="cvs"></canvas>
+    <div id="game-ui">
+      <div class="score-board">
+        <span id="sc1" style="color:#0084ff">0</span>
+        <span id="game-timer" style="font-size:14px;color:#fff;background:#333;padding:2px 8px;border-radius:5px;">03:00</span>
+        <span id="sc2" style="color:#ff4747">0</span>
+      </div>
+      <div class="pins-container">
+        <div class="pin-btn" data-key="1" onclick="sendPin('😄')">😄</div>
+        <div class="pin-btn" data-key="2" onclick="sendPin('😁')">😁</div>
+        <div class="pin-btn" data-key="3" onclick="sendPin('👍')">👍</div>
+        <div class="pin-btn" data-key="4" onclick="sendPin('👎')">👎</div>
+        <div class="pin-btn" data-key="5" onclick="sendPin('😭')">😭</div>
+        <div class="pin-btn" data-key="6" onclick="sendPin('🤡')">🤡</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="scr-lb" class="screen">
+    <h2 style="font-size:20px;">ГЛОБАЛЬНЫЙ ТОП</h2>
+    <div id="lb-list" style="width:90%;flex:1;overflow-y:auto;background:rgba(0,0,0,0.3);border-radius:15px;padding:10px;margin:10px 0;"></div>
+    <div class="btn btn-red" onclick="switchScr('scr-lobby')">НАЗАД</div>
+  </div>
+
+  <div id="mod-settings" class="overlay">
+    <h3>НАСТРОЙКИ</h3>
+    <input type="text" id="set-nick" class="input-field" placeholder="Ник">
+    <input type="text" id="set-id" class="input-field" placeholder="Новый ID">
+    <input type="password" id="set-pass" class="input-field" placeholder="Новый Пароль">
+    <div style="font-size:11px;margin-top:5px;">АВАТАРКИ:</div>
+    <div class="emoji-grid" id="set-emoji-grid"></div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:5px;">
+      <div class="btn btn-blue" onclick="saveSettings()">СОХРАНИТЬ</div>
+      <div class="btn btn-red" onclick="closeSettings()">ЗАКРЫТЬ</div>
+      <div class="btn" style="background:#555;color:#fff;" onclick="logout()">ВЫЙТИ</div>
+    </div>
+  </div>
+
+  <div id="mod-admin" class="overlay">
+    <h3 style="color:#f5d300;margin-bottom:10px;font-size:18px;">ПАНЕЛЬ БОГА</h3>
+    <div style="display:flex;gap:5px;margin-bottom:10px;">
+      <div class="btn btn-blue adm-tab" onclick="switchAdmTab('lobby')">ИГРОК</div>
+      <div class="btn btn-blue adm-tab" onclick="switchAdmTab('cups')">КУБКИ</div>
+      <div class="btn btn-blue adm-tab" onclick="switchAdmTab('game')">ИГРА</div>
+    </div>
+    <div id="adm-lobby-tools" class="adm-panel-ctn">
+      <input type="text" id="adm-id" class="input-field" placeholder="ID игрока" style="width:100%">
+      <input type="number" id="adm-coins" class="input-field" placeholder="Монеты" style="width:100%">
+      <div style="display:flex;gap:5px;">
+        <input type="text" id="adm-nick" class="input-field" placeholder="Ник" style="width:70%">
+        <input type="text" id="adm-av" class="input-field" placeholder="Ава" style="width:30%">
+      </div>
+      <div class="btn btn-blue" style="width:100%" onclick="admSavePlayer()">ОБНОВИТЬ</div>
+      <div class="btn btn-red" style="width:100%;margin-top:10px;" onclick="admResetPlayer()">СБРОСИТЬ</div>
+      <div class="btn btn-red" style="width:100%;background:#800000;margin-top:5px;" onclick="admDeletePlayer()">УДАЛИТЬ</div>
+    </div>
+    <div id="adm-cups-tools" class="adm-panel-ctn" style="display:none;">
+      <input type="text" id="adm-cup-id" class="input-field" placeholder="ID игрока" style="width:100%">
+      <div class="btn btn-blue" style="width:100%" onclick="admLoadCupsPlayer()">НАЙТИ</div>
+      <div id="adm-cups-list" style="margin-top:15px;display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+    <div id="adm-game-tools" class="adm-panel-ctn" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+        <div class="btn btn-blue" onclick="admFreezeAll(true)">ФРИЗ ВСЕХ</div>
+        <div class="btn btn-blue" onclick="admFreezeAll(false)">АНФРИЗ</div>
+        <div class="btn btn-red" onclick="admFreezeEnemy(true)">ФРИЗ ВР.</div>
+        <div class="btn btn-red" onclick="admFreezeEnemy(false)">АНФРИЗ ВР.</div>
+        <div class="btn" style="background:#00ff00;color:#000" onclick="admEnd(true)">ИНСТА ВИН</div>
+        <div class="btn btn-red" onclick="admEnd(false)">ИНСТА ЛУЗ</div>
+      </div>
+    </div>
+    <div class="btn" style="margin-top:5px;" onclick="closeAdmin()">ЗАКРЫТЬ</div>
+  </div>
+
+  <div id="mod-result" class="overlay">
+    <h2 id="res-title" style="font-size:32px;">ПОБЕДА!</h2>
+    <div id="res-stats" style="margin:20px 0;font-size:18px;"></div>
+    <div class="btn btn-blue" onclick="onResultClose()">В ЛОББИ</div>
+  </div>
+</div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════╗
+//   FIREBASE
+// ╚══════════════════════════════════════════════════════════════╝
+const firebaseConfig = {
+  apiKey: "AIzaSyCWznT2BrzSlsiB83VhNUEje1om8ktsG3s",
+  authDomain: "threecats-hockey.firebaseapp.com",
+  databaseURL: "https://threecats-hockey-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "threecats-hockey",
+  appId: "1:859200036415:web:eac0eaa951fc642d75a28a"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   КОНСТАНТЫ ПОЛЯ И ФИЗИКИ
+// ╚══════════════════════════════════════════════════════════════╝
+const CW = 1280, CH = 720;
+const WALL = 40;
+const CORN = 120;
+const GOAL_H = 140;
+const BALL_R = 28;
+const MAX_BALL_SPD = 18;
+// BASE_R — радиус при size=1. Было 45, стало 60 (+33%, заметно крупнее)
+const BASE_R = 60;
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   ДАННЫЕ
+// ╚══════════════════════════════════════════════════════════════╝
+const CHARS = [
+  {n:'Кейт',   e:'🐱', size:1,   power:1,   price:0},
+  {n:'Элен',   e:'👽', size:1.2, power:0.8, price:25},
+  {n:'Майни',  e:'🐵', size:0.8, power:1.2, price:67},
+  {n:'Замб',   e:'🧟', size:2,   power:1.2, price:104},
+  {n:'Базз',   e:'🐝', size:0.6, power:1.4, price:121},
+  {n:'Гэст',   e:'👻', size:1,   power:1.5, price:155},
+  {n:'Пуп',    e:'💩', size:0.8, power:1.6, price:220},
+  {n:'Клауни', e:'🤡', size:2,   power:2,   price:333}
+];
+const PINS = ['😄','😁','👍','👎','😭','🤡'];
+const RANK_T = [0,10,20,30,40,50,60,70,80,90,100,140,180,220,260,300,340,380,420,460,500,550,600,650,700,750,800,850,900,950,1000,1050,1100,1150,1200,1250];
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   СОСТОЯНИЕ
+// ╚══════════════════════════════════════════════════════════════╝
+let curUser=null, uData=null, selIdx=0, tempAv='🐱';
+let inGame=false, mode=1, score=[0,0], pList=[], ball={};
+let matchStartTime=0;
+let cvs=document.getElementById('cvs'), ctx=cvs.getContext('2d');
+let dragId=null, botsFrozen=false, enemyFrozen=false, searchInt=null;
+let goalCooldown=0; // защита от двойного гола
+
+// Онлайн
+let roomId=null, isHost=false, roomRef=null;
+let roomListeners=[];
+let remotePositions={}, remoteBall=null;
+const POS_MS=50, BALL_MS=50;
+let lastPos=0, lastBall=0;
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   СТАРТ
+// ╚══════════════════════════════════════════════════════════════╝
+window.onload = () => {
+  let saved = localStorage.getItem('hockey_id');
+  if(saved) db.ref('accounts/'+saved).once('value', s => {
+    if(s.exists()) { doLogin(saved, s.val()); checkReconnect(); }
+  });
+};
+
+async function checkReconnect() {
+  let rid = localStorage.getItem('activeRoomId');
+  if(!rid) return;
+  let snap = await db.ref('rooms/'+rid).once('value');
+  if(!snap.exists()) { localStorage.removeItem('activeRoomId'); return; }
+  let rData = snap.val();
+  if(rData.status==='ended') { localStorage.removeItem('activeRoomId'); return; }
+  if(!rData.players||!rData.players[curUser]) { localStorage.removeItem('activeRoomId'); return; }
+  roomId=rid; mode=rData.mode||1;
+  let pIds=Object.keys(rData.players).filter(k=>!rData.players[k].isBot);
+  isHost=(pIds[0]===curUser);
+  initRoom(rData);
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   АВТОРИЗАЦИЯ
+// ╚══════════════════════════════════════════════════════════════╝
+function doLogin(id, data) {
+  curUser=id;
+  if(!data.charCups) data.charCups={};
+  uData=data;
+  localStorage.setItem('hockey_id', id);
+  if(id==='domipurple') document.getElementById('btn-admin').style.display='block';
+  trackPresence();
+  watchPendingRoom();
+  db.ref('accounts/'+id).on('value', s => {
+    if(s.exists()) { uData=s.val(); if(!uData.charCups)uData.charCups={}; if(!inGame)renderLobby(); }
+  });
+}
+
+function trackPresence() {
+  let r=db.ref('presence/'+curUser); r.onDisconnect().remove(); r.set(true);
+  db.ref('presence').on('value', s=>{ document.getElementById('online-count').innerText=s.numChildren()||1; });
+}
+
+function tryAuth() {
+  let u=document.getElementById('auth-user').value.trim().toLowerCase();
+  let p=document.getElementById('auth-pass').value.trim();
+  if(u.length<3) return alert('Минимум 3 символа');
+  db.ref('accounts/'+u).once('value', s=>{
+    if(s.exists()) { if(s.val().pass===p) doLogin(u,s.val()); else alert('Пароль неверный!'); }
+    else { let d={pass:p,nick:u,av:'🐱',charCups:{},coins:0,unlocked:['Кейт'],selected:0}; db.ref('accounts/'+u).set(d).then(()=>doLogin(u,d)); }
+  });
+}
+
+function getRank(c) { for(let i=34;i>=0;i--) if(c>=RANK_T[i]) return i+1; return 1; }
+function getTotalCups(d) { if(!d.charCups) return 0; return Object.values(d.charCups).reduce((a,b)=>a+b,0); }
+function switchScr(id) { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+
+function renderLobby() {
+  if(inGame) return; switchScr('scr-lobby');
+  document.getElementById('lb-av').innerText=uData.av;
+  document.getElementById('lb-nick').innerText=uData.nick;
+  document.getElementById('lb-id').innerText=curUser;
+  document.getElementById('lb-cups').innerText=getTotalCups(uData);
+  document.getElementById('lb-coins').innerText=uData.coins;
+  let c=CHARS[selIdx], cc=uData.charCups[c.n]||0;
+  document.getElementById('ch-img').innerText=c.e;
+  document.getElementById('ch-name').innerText=c.n;
+  document.getElementById('ch-rank').innerText='Ранг '+getRank(cc)+' | 🏆 '+cc;
+  document.getElementById('ch-info').innerText='Сила: '+c.power+' | Размер: '+c.size;
+  let a=document.getElementById('char-actions');
+  if(uData.unlocked.includes(c.n)) a.innerHTML=selIdx===uData.selected?'<div class="btn btn-locked">АКТИВЕН</div>':'<div class="btn btn-blue" onclick="selectChar()">ВЫБРАТЬ</div>';
+  else a.innerHTML='<div class="btn" onclick="buyChar()">КУПИТЬ: '+c.price+'💰</div>';
+}
+function selectChar() { db.ref('accounts/'+curUser).update({selected:selIdx}); }
+function buyChar() { let c=CHARS[selIdx]; if(uData.coins>=c.price) db.ref('accounts/'+curUser).update({coins:uData.coins-c.price,unlocked:[...uData.unlocked,c.n]}); }
+function changeChar(d) { selIdx=(selIdx+d+CHARS.length)%CHARS.length; renderLobby(); }
+
+function openSettings() { document.getElementById('mod-settings').style.display='flex'; document.getElementById('set-nick').value=uData.nick; document.getElementById('set-id').value=curUser; document.getElementById('set-pass').value=uData.pass; renderEmojiGrid(); }
+function renderEmojiGrid() { let g=document.getElementById('set-emoji-grid'); g.innerHTML=''; CHARS.filter(c=>uData.unlocked.includes(c.n)).forEach(c=>{ g.innerHTML+='<span class="emoji-btn '+(tempAv===c.e?'sel':'')+'" onclick="tempAv=\''+c.e+'\';renderEmojiGrid()">'+c.e+'</span>'; }); }
+function closeSettings() { document.getElementById('mod-settings').style.display='none'; }
+async function saveSettings() {
+  let nid=document.getElementById('set-id').value.trim().toLowerCase();
+  let up={nick:document.getElementById('set-nick').value,av:tempAv,pass:document.getElementById('set-pass').value};
+  if(nid!==curUser) { let s=await db.ref('accounts/'+nid).once('value'); if(s.exists()) return alert('ID занят'); await db.ref('accounts/'+nid).set({...uData,...up}); await db.ref('accounts/'+curUser).remove(); doLogin(nid,{...uData,...up}); }
+  else db.ref('accounts/'+curUser).update(up);
+  closeSettings();
+}
+function logout() { localStorage.clear(); location.reload(); }
+
+function renderLB() {
+  let l=document.getElementById('lb-list'); l.innerHTML='Загрузка...';
+  db.ref('accounts').once('value', s=>{ let items=[]; s.forEach(c=>{ let d=c.val(); d.id=c.key; d.total=getTotalCups(d); items.push(d); }); items.sort((a,b)=>b.total-a.total); l.innerHTML=''; items.slice(0,10).forEach((d,i)=>l.innerHTML+='<div style="padding:10px;background:rgba(255,255,255,0.1);margin-bottom:5px;border-radius:10px;display:flex;justify-content:space-between;"><span>#'+(i+1)+' '+d.av+' '+d.nick+' <small style="color:rgba(255,255,255,0.5);font-size:10px;">['+d.id+']</small></span><span style="color:#ff9000">🏆 '+d.total+'</span></div>'); });
+  switchScr('scr-lb');
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   АДМИН
+// ╚══════════════════════════════════════════════════════════════╝
+function switchAdmTab(t) { ['lobby','cups','game'].forEach(x=>document.getElementById('adm-'+x+'-tools').style.display=x===t?'block':'none'); }
+function openAdmin() { document.getElementById('mod-admin').style.display='flex'; switchAdmTab('lobby'); }
+function closeAdmin() { document.getElementById('mod-admin').style.display='none'; }
+async function admSavePlayer() { let id=document.getElementById('adm-id').value.trim().toLowerCase(); let up={}; let co=document.getElementById('adm-coins').value; let nk=document.getElementById('adm-nick').value; let av=document.getElementById('adm-av').value; if(co!=='')up.coins=parseInt(co); if(nk!=='')up.nick=nk; if(av!=='')up.av=av; if(Object.keys(up).length>0&&id!==''){await db.ref('accounts/'+id).update(up);alert('Обновлено');} }
+async function admResetPlayer() { let id=document.getElementById('adm-id').value.trim().toLowerCase(); if(id!==''){await db.ref('accounts/'+id).update({charCups:{},coins:0,unlocked:['Кейт'],selected:0});alert('Сброшен');} }
+async function admDeletePlayer() { let id=document.getElementById('adm-id').value.trim().toLowerCase(); if(id!==''){await db.ref('accounts/'+id).remove();alert('Удалён');} }
+async function admLoadCupsPlayer() { let id=document.getElementById('adm-cup-id').value.trim().toLowerCase(); if(!id)return; let s=await db.ref('accounts/'+id).once('value'); if(!s.exists())return alert('Не найден'); let d=s.val(); let html=''; d.unlocked.forEach(ch=>{ let cups=(d.charCups&&d.charCups[ch])||0; let cd=CHARS.find(x=>x.n===ch); html+='<div style="display:flex;justify-content:space-between;align-items:center;background:#333;padding:8px;border-radius:8px;"><span>'+cd.e+' '+ch+'</span><span style="color:#ff9000">🏆 '+cups+'</span><div class="btn btn-blue" style="min-width:auto;padding:5px;font-size:10px;" onclick="admSetCups(\''+id+'\',\''+ch+'\')">ИЗМ.</div></div>'; }); document.getElementById('adm-cups-list').innerHTML=html; }
+function admSetCups(id,ch) { let c=prompt('Кубков на '+ch+'?'); if(c!==null&&!isNaN(c)) db.ref('accounts/'+id+'/charCups/'+ch).set(parseInt(c)).then(()=>admLoadCupsPlayer()); }
+function admFreezeAll(s) { botsFrozen=s; closeAdmin(); }
+function admFreezeEnemy(s) { enemyFrozen=s; closeAdmin(); }
+function admEnd(win) { if(isHost&&roomRef){ let ns=win?[5,score[1]]:[score[0],5]; roomRef.child('state').update({score:ns,status:'ended'}); } closeAdmin(); }
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   ПИНЫ
+// ╚══════════════════════════════════════════════════════════════╝
+function sendPin(e, tid=null) {
+  let p=pList.find(x=>tid?x.id===tid:x.isMe);
+  if(p) { p.activePin=e; p.pinTimer=100; if(p.isMe&&roomRef) roomRef.child('pins/'+curUser).set({e,t:Date.now()}); }
+}
+window.addEventListener('keydown', e=>{ if(!inGame)return; if(e.key>='1'&&e.key<='6') sendPin(PINS[parseInt(e.key)-1]); });
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   УПРАВЛЕНИЕ
+// ╚══════════════════════════════════════════════════════════════╝
+function getPos(e) { let r=cvs.getBoundingClientRect(),t=e.touches?e.touches[0]:e; return {x:(t.clientX-r.left)*(CW/r.width),y:(t.clientY-r.top)*(CH/r.height)}; }
+function startDrag(e) { if(!inGame)return; let p=getPos(e),me=pList.find(x=>x.isMe); if(me&&Math.hypot(me.x-p.x,me.y-p.y)<me.r*3) dragId=me.id; }
+function moveDrag(e) {
+  if(!dragId||!inGame)return; if(e.touches)e.preventDefault();
+  let p=getPos(e), me=pList.find(x=>x.id===dragId); if(!me)return;
+  let nx=p.x, ny=p.y;
+  if(me.t===1) nx=Math.max(WALL+me.r, Math.min(CW/2-me.r, nx));
+  else         nx=Math.max(CW/2+me.r, Math.min(CW-WALL-me.r, nx));
+  ny=Math.max(WALL+me.r, Math.min(CH-WALL-me.r, ny));
+  let c=fieldClamp(nx,ny,me.r);
+  me.x=c.x; me.y=c.y;
+}
+cvs.addEventListener('touchstart',startDrag);
+cvs.addEventListener('touchmove',moveDrag,{passive:false});
+cvs.addEventListener('mousedown',startDrag);
+window.addEventListener('mousemove',moveDrag);
+window.addEventListener('mouseup',()=>dragId=null);
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   ПОИСК
+// ╚══════════════════════════════════════════════════════════════╝
+function cancelSearch() {
+  clearInterval(searchInt);
+  db.ref('queue/m'+mode+'/'+curUser).remove();
+  renderLobby();
+}
+
+function startSearch(m) {
+  mode=m; score=[0,0]; botsFrozen=false; enemyFrozen=false;
+  switchScr('scr-search');
+  let timer=10;
+  document.getElementById('search-timer-text').innerText=timer;
+  db.ref('queue/m'+m+'/'+curUser).set({id:curUser,nick:uData.nick,char:uData.selected});
+  db.ref('queue/m'+m+'/'+curUser).onDisconnect().remove();
+  document.getElementById('search-players-count').innerText='1 / '+(m===1?2:4);
+
+  searchInt=setInterval(async()=>{
+    timer--;
+    document.getElementById('search-timer-text').innerText=Math.max(0,timer);
+    let qs=await db.ref('queue/m'+m).once('value');
+    let q=qs.val()||{}, pIds=Object.keys(q), needed=m===1?2:4;
+    document.getElementById('search-players-count').innerText=Math.min(needed,pIds.length)+' / '+needed;
+    let enough=pIds.length>=needed, timedOut=timer<=0;
+    if((enough||timedOut)&&pIds[0]===curUser) {
+      clearInterval(searchInt);
+      let taken=enough?pIds.slice(0,needed):pIds;
+      let found=[];
+      for(let pid of taken) { found.push({id:pid,nick:q[pid].nick,char:q[pid].char}); await db.ref('queue/m'+m+'/'+pid).remove(); }
+      await createRoom(found);
+    } else if(timedOut&&pIds[0]!==curUser) {
+      clearInterval(searchInt);
+      // Ждём pendingRoom от хоста до 5 сек, потом лобби
+      setTimeout(()=>{ if(!inGame) renderLobby(); }, 5000);
+    }
+  },1000);
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   СОЗДАНИЕ КОМНАТЫ
+// ╚══════════════════════════════════════════════════════════════╝
+async function createRoom(found) {
+  let needed=mode===1?2:4;
+  let rid='room_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
+  let players={};
+  found.forEach((fp,i)=>{
+    let t=(i%2===0)?1:2, role=i>1?'gk':'striker';
+    let c=CHARS[fp.char];
+    players[fp.id]={id:fp.id,nick:fp.nick,char:fp.char,charEmoji:c.e,charR:Math.round(BASE_R*c.size),charP:c.power,team:t,role,isBot:false,online:true};
+  });
+  for(let i=found.length;i<needed;i++) {
+    let bi=Math.floor(Math.random()*CHARS.length);
+    let c=CHARS[bi], t=(i%2===0)?1:2, role=i>1?'gk':'striker';
+    let botId='bot_'+i+'_'+Date.now();
+    // Ник бота = "Бот <ИмяПерсонажа>"
+    players[botId]={id:botId,nick:'Бот '+c.n,char:bi,charEmoji:c.e,charR:Math.round(BASE_R*c.size),charP:c.power,team:t,role,isBot:true,online:true};
+  }
+  let initPos={};
+  Object.entries(players).forEach(([pid,pd])=>{ initPos[pid]={x:pd.team===1?220:1060,y:pd.role==='gk'?(pd.team===1?110:610):CH/2}; });
+  let rData={mode,status:'playing',hostId:curUser,startTime:Date.now(),players,positions:initPos,state:{score:[0,0],ball:{x:CW/2,y:CH/2,vx:0,vy:0},resetAt:0,status:'playing'}};
+  await db.ref('rooms/'+rid).set(rData);
+  for(let fp of found) if(fp.id!==curUser) await db.ref('accounts/'+fp.id+'/pendingRoom').set(rid);
+  roomId=rid; isHost=true;
+  localStorage.setItem('activeRoomId',rid);
+  initRoom(rData);
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   СЛЕЖКА ЗА ПРИГЛАШЕНИЕМ
+// ╚══════════════════════════════════════════════════════════════╝
+function watchPendingRoom() {
+  db.ref('accounts/'+curUser+'/pendingRoom').on('value', async s=>{
+    if(!s.exists()||inGame) return;
+    let rid=s.val(); if(!rid) return;
+    let snap=await db.ref('rooms/'+rid).once('value');
+    if(!snap.exists()) return;
+    let rData=snap.val();
+    roomId=rid;
+    let pIds=Object.keys(rData.players).filter(k=>!rData.players[k].isBot);
+    isHost=(pIds[0]===curUser);
+    localStorage.setItem('activeRoomId',rid);
+    db.ref('accounts/'+curUser+'/pendingRoom').remove();
+    clearInterval(searchInt);
+    initRoom(rData);
+  });
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   ИНИЦИАЛИЗАЦИЯ КОМНАТЫ
+// ╚══════════════════════════════════════════════════════════════╝
+function initRoom(rData) {
+  switchScr('scr-game');
+  document.getElementById('game-ui').style.display='block';
+  cvs.width=CW; cvs.height=CH; inGame=true;
+  matchStartTime=rData.startTime;
+  roomRef=db.ref('rooms/'+roomId);
+  goalCooldown=0;
+
+  roomListeners.forEach(fn=>fn()); roomListeners=[];
+  remotePositions={}; remoteBall=null;
+
+  pList=[];
+  Object.entries(rData.players).forEach(([pid,pd])=>{
+    let sx=pd.team===1?220:1060;
+    let sy=pd.role==='gk'?(pd.team===1?110:610):CH/2;
+    pList.push({id:pid,x:sx,y:sy,lastX:sx,lastY:sy,r:pd.charR,p:pd.charP,e:pd.charEmoji,t:pd.team,isMe:pid===curUser,nick:pd.nick,role:pd.role,stuckTicks:0,pinTimer:0,activePin:'',isBot:pd.isBot,aiTx:CW/2,aiTy:CH/2,aiDelay:0});
+  });
+
+  let st=rData.state||{};
+  score=st.score?[...st.score]:[0,0];
+  ball={x:CW/2,y:CH/2,vx:0,vy:0,r:BALL_R};
+  if(rData.positions) Object.entries(rData.positions).forEach(([pid,pos])=>{ let p=pList.find(x=>x.id===pid); if(p){p.x=pos.x;p.y=pos.y;p.lastX=pos.x;p.lastY=pos.y;} });
+  if(st.ball){ball.x=st.ball.x;ball.y=st.ball.y;ball.vx=st.ball.vx||0;ball.vy=st.ball.vy||0;}
+
+  if(!pList.find(p=>p.id===curUser)?.isBot) {
+    roomRef.child('players/'+curUser+'/online').set(true);
+    roomRef.child('players/'+curUser+'/online').onDisconnect().set(false);
+  }
+
+  // Слушатели Firebase
+  let lPos=roomRef.child('positions').on('value', s=>{ let d=s.val()||{}; Object.entries(d).forEach(([pid,pos])=>{ if(pid!==curUser) remotePositions[pid]=pos; }); });
+  roomListeners.push(()=>roomRef.child('positions').off('value',lPos));
+
+  if(!isHost) {
+    let lBall=roomRef.child('state/ball').on('value', s=>{ if(s.exists()) remoteBall=s.val(); });
+    roomListeners.push(()=>roomRef.child('state/ball').off('value',lBall));
+  }
+
+  // Главный слушатель состояния (счёт + статус)
+  let lState=roomRef.child('state').on('value', s=>{
+    if(!s.exists()) return;
+    let st=s.val();
+    if(st.score) { score=[...st.score]; document.getElementById('sc1').innerText=score[0]; document.getElementById('sc2').innerText=score[1]; }
+    if(st.status==='ended'&&inGame) handleMatchEnd();
+  });
+  roomListeners.push(()=>roomRef.child('state').off('value',lState));
+
+  // Сброс позиций
+  let lReset=roomRef.child('state/resetAt').on('value', s=>{ if(s.exists()&&s.val()>0) doReset(); });
+  roomListeners.push(()=>roomRef.child('state/resetAt').off('value',lReset));
+
+  // Пины
+  let lPins=roomRef.child('pins').on('value', s=>{ let d=s.val()||{}; Object.entries(d).forEach(([pid,pd])=>{ let p=pList.find(x=>x.id===pid); if(p&&!p.isMe){p.activePin=pd.e;p.pinTimer=100;} }); });
+  roomListeners.push(()=>roomRef.child('pins').off('value',lPins));
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   ФИЗИКА ПОЛЯ
+// ╚══════════════════════════════════════════════════════════════╝
+function fieldClamp(x,y,r) {
+  x=Math.max(WALL+r,Math.min(CW-WALL-r,x));
+  y=Math.max(WALL+r,Math.min(CH-WALL-r,y));
+  // Углы
+  let cr=CORN+WALL;
+  let corners=[{cx:WALL+cr,cy:WALL+cr},{cx:CW-WALL-cr,cy:WALL+cr},{cx:WALL+cr,cy:CH-WALL-cr},{cx:CW-WALL-cr,cy:CH-WALL-cr}];
+  for(let c of corners) {
+    let dx=x-c.cx, dy=y-c.cy;
+    if(Math.abs(dx)<cr&&Math.abs(dy)<cr) {
+      let d=Math.hypot(dx,dy), md=cr-r;
+      if(d>md&&d>0){x=c.cx+dx/d*md;y=c.cy+dy/d*md;}
+    }
+  }
+  return {x,y};
+}
+
+function ballWallCollide() {
+  // Углы
+  let cr=CORN+WALL;
+  let corners=[{cx:WALL+cr,cy:WALL+cr},{cx:CW-WALL-cr,cy:WALL+cr},{cx:WALL+cr,cy:CH-WALL-cr},{cx:CW-WALL-cr,cy:CH-WALL-cr}];
+  let inCorner=false;
+  for(let c of corners) {
+    let dx=ball.x-c.cx, dy=ball.y-c.cy;
+    if(Math.abs(dx)<cr&&Math.abs(dy)<cr) {
+      inCorner=true;
+      let d=Math.hypot(dx,dy), md=cr-ball.r;
+      if(d>md&&d>0) {
+        let ang=Math.atan2(dy,dx);
+        ball.x=c.cx+Math.cos(ang)*md; ball.y=c.cy+Math.sin(ang)*md;
+        let nx=Math.cos(ang),ny=Math.sin(ang),dot=ball.vx*nx+ball.vy*ny;
+        ball.vx=(ball.vx-2*dot*nx)*0.7; ball.vy=(ball.vy-2*dot*ny)*0.7;
+      }
+      break;
+    }
+  }
+  if(!inCorner) {
+    if(ball.y<WALL+ball.r){ball.y=WALL+ball.r;ball.vy=Math.abs(ball.vy)*0.75;}
+    if(ball.y>CH-WALL-ball.r){ball.y=CH-WALL-ball.r;ball.vy=-Math.abs(ball.vy)*0.75;}
+    // Левая стена
+    if(ball.x<=WALL+ball.r) {
+      if(ball.y>=CH/2-GOAL_H&&ball.y<=CH/2+GOAL_H) {
+        if(goalCooldown<=0) registerGoal(1); // команда 2 забила
+      } else { ball.x=WALL+ball.r; ball.vx=Math.abs(ball.vx)*0.75; }
+    }
+    // Правая стена
+    if(ball.x>=CW-WALL-ball.r) {
+      if(ball.y>=CH/2-GOAL_H&&ball.y<=CH/2+GOAL_H) {
+        if(goalCooldown<=0) registerGoal(0); // команда 1 забила
+      } else { ball.x=CW-WALL-ball.r; ball.vx=-Math.abs(ball.vx)*0.75; }
+    }
+  }
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   ГОЛ
+// ╚══════════════════════════════════════════════════════════════╝
+function registerGoal(idx) {
+  score[idx]++;
+  goalCooldown=100;
+  let ns=[...score];
+  let ended=ns[0]>=5||ns[1]>=5;
+  roomRef.child('state').update({score:ns,resetAt:ended?0:Date.now(),status:ended?'ended':'playing'});
+  if(ended) endMatch(); else doReset();
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   СБРОС
+// ╚══════════════════════════════════════════════════════════════╝
+function doReset() {
+  ball={x:CW/2,y:CH/2,vx:0,vy:0,r:BALL_R};
+  pList.forEach(p=>{ p.x=p.t===1?220:1060; p.y=p.role==='gk'?(p.t===1?110:610):CH/2; p.lastX=p.x;p.lastY=p.y;p.stuckTicks=0; });
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   ИИ БОТОВ
+//  diff 0..1 — уровень сложности (каждые 100 кубков +0.1)
+// ╚══════════════════════════════════════════════════════════════╝
+function getMyDiff() { return Math.min(1.0, getTotalCups(uData)/1000); }
+
+function botUpdate(p, diff) {
+  if(botsFrozen||(enemyFrozen&&p.t===2)) return;
+
+  // Скорость бота
+  let spd = (p.role==='gk') ? p.p*3.5*(0.55+diff*0.45) : p.p*4*(0.4+diff*0.6);
+
+  // Предсказание — сколько кадров вперёд
+  let pred = diff * 22;
+
+  // Точность — шум в целевой позиции
+  let noiseX = (1-diff)*200*(Math.random()-0.5);
+  let noiseY = (1-diff)*120*(Math.random()-0.5);
+
+  let myGoalX = p.t===1 ? WALL+50 : CW-WALL-50;
+  let atkGoalX= p.t===1 ? CW-WALL-50 : WALL+50;
+  let halfX   = p.t===1 ? CW/2-p.r : CW/2+p.r;
+
+  let bx=ball.x+ball.vx*pred, by=ball.y+ball.vy*pred;
+  let ballDist=Math.hypot(ball.x-p.x,ball.y-p.y);
+  let ballOnMySide=(p.t===1&&ball.x<CW/2)||(p.t===2&&ball.x>CW/2);
+
+  let tx,ty;
+
+  if(p.role==='gk') {
+    // === ВРАТАРЬ ===
+    // Позиция по умолчанию — на линии вратаря
+    tx=p.t===1?200:CW-200;
+    // Отслеживает шайбу по Y
+    ty=Math.max(CH/2-GOAL_H+p.r+10, Math.min(CH/2+GOAL_H-p.r-10, by+noiseY*0.3));
+    // Если шайба на своей половине — выдвигается навстречу
+    if(ballOnMySide&&ballDist<400*diff+150) {
+      let outX=p.t===1 ? Math.min(bx+noiseX, CW/2-p.r) : Math.max(bx+noiseX, CW/2+p.r);
+      tx=p.t===1 ? Math.max(160, outX) : Math.min(CW-160, outX);
+      ty=by+noiseY;
+    }
+  } else {
+    // === ПОЛЕВОЙ ===
+    // Ищем ближайшего союзника
+    let ally=pList.find(m=>m.t===p.t&&m.id!==p.id);
+    let allyDist=ally?Math.hypot(ball.x-ally.x,ball.y-ally.y):9999;
+    let iAmCloser=ballDist<allyDist||!ally;
+
+    if(iAmCloser||diff<0.3) {
+      // Идём к предсказанной шайбе
+      tx=bx+noiseX; ty=by+noiseY;
+    } else {
+      // Союзник ближе — занимаем атакующую позицию
+      if(diff>0.55) {
+        // Высокий diff: встаём перед воротами соперника
+        tx=atkGoalX+(p.t===1?-180:180);
+        ty=CH/2+(p.id.charCodeAt(p.id.length-1)%2===0?-90:90);
+      } else {
+        // Средний diff: центр поля
+        tx=CW/2+(p.t===1?-60:60); ty=CH/2+noiseY;
+      }
+    }
+
+    // При низком diff — боты иногда вообще не реагируют
+    if(diff<0.25&&Math.random()<0.4) { tx=p.x; ty=p.y; }
+
+    // Ограничиваем своей половиной
+    if(p.t===1) tx=Math.min(halfX,tx); else tx=Math.max(halfX,tx);
+  }
+
+  // Задержка реакции (обновляем цель раз в N кадров)
+  p.aiDelay--;
+  if(p.aiDelay<=0) {
+    p.aiTx=tx; p.aiTy=ty;
+    p.aiDelay=Math.round((1-diff)*14)+1;
+  }
+
+  let dx=p.aiTx-p.x, dy=p.aiTy-p.y, dist=Math.hypot(dx,dy);
+  if(dist>3) { p.x+=dx/dist*spd; p.y+=dy/dist*spd; }
+
+  // Зажимаем в поле + свою половину
+  let clamped=fieldClamp(p.x,p.y,p.r);
+  if(p.t===1) clamped.x=Math.min(CW/2-p.r, Math.max(WALL+p.r, clamped.x));
+  else        clamped.x=Math.max(CW/2+p.r, Math.min(CW-WALL-p.r, clamped.x));
+  p.x=clamped.x; p.y=clamped.y;
+
+  if(p.pinTimer<=0&&Math.random()<0.0015*diff) sendPin(PINS[Math.floor(Math.random()*PINS.length)],p.id);
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   ГЛАВНЫЙ ЦИКЛ
+// ╚══════════════════════════════════════════════════════════════╝
+function gameLoop() {
+  if(!inGame) return;
+
+  let tr=Math.max(0,180000-(Date.now()-matchStartTime));
+  let mins=Math.floor(tr/60000), secs=Math.floor((tr%60000)/1000);
+  document.getElementById('game-timer').innerText='0'+mins+':'+(secs<10?'0':'')+secs;
+  if(tr<=0&&isHost) { endMatch(); return; }
+  if(tr<=0) { requestAnimationFrame(gameLoop); return; }
+
+  if(goalCooldown>0) goalCooldown--;
+
+  // Поле
+  ctx.fillStyle='#2e86de'; ctx.fillRect(0,0,CW,CH);
+  ctx.strokeStyle='#fff'; ctx.lineWidth=12;
+  ctx.beginPath(); ctx.roundRect(WALL,WALL,CW-WALL*2,CH-WALL*2,CORN); ctx.stroke();
+  // Центральная линия
+  ctx.beginPath(); ctx.moveTo(CW/2,WALL); ctx.lineTo(CW/2,CH-WALL); ctx.stroke();
+  ctx.beginPath(); ctx.arc(CW/2,CH/2,80,0,Math.PI*2); ctx.stroke();
+  // Ворота
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.fillRect(0,CH/2-GOAL_H,WALL,GOAL_H*2);
+  ctx.fillRect(CW-WALL,CH/2-GOAL_H,WALL,GOAL_H*2);
+
+  // Физика шайбы — только хост
+  if(isHost) {
+    ball.x+=ball.vx; ball.y+=ball.vy;
+    ball.vx*=0.972; ball.vy*=0.972;
+    if(Math.abs(ball.vx)<0.04)ball.vx=0; if(Math.abs(ball.vy)<0.04)ball.vy=0;
+    ballWallCollide();
+  } else if(remoteBall) {
+    ball.x+=(remoteBall.x-ball.x)*0.35;
+    ball.y+=(remoteBall.y-ball.y)*0.35;
+    ball.vx=remoteBall.vx; ball.vy=remoteBall.vy;
+  }
+
+  // Игроки
+  let diff=getMyDiff();
+  pList.forEach(p=>{
+    let pvx=p.x-(p.lastX||p.x), pvy=p.y-(p.lastY||p.y);
+    p.lastX=p.x; p.lastY=p.y;
+
+    if(p.isMe) {
+      // drag-управление выше
+    } else if(p.isBot) {
+      if(isHost) botUpdate(p,diff);
+      else { let rp=remotePositions[p.id]; if(rp){p.x+=(rp.x-p.x)*0.35;p.y+=(rp.y-p.y)*0.35;} }
+    } else {
+      let rp=remotePositions[p.id];
+      if(rp){p.x+=(rp.x-p.x)*0.35;p.y+=(rp.y-p.y)*0.35;}
+    }
+
+    // Столкновение с шайбой — только хост
+    if(isHost) {
+      let d=Math.hypot(ball.x-p.x,ball.y-p.y);
+      if(d<p.r+ball.r&&d>0) {
+        let ang=Math.atan2(ball.y-p.y,ball.x-p.x);
+        let impact=(pvx*Math.cos(ang)+pvy*Math.sin(ang));
+        let base=Math.min(13, 3+p.p*2.2);
+        let force=base+Math.max(0,impact*0.7);
+        ball.vx=Math.cos(ang)*force; ball.vy=Math.sin(ang)*force;
+        let spd=Math.hypot(ball.vx,ball.vy);
+        if(spd>MAX_BALL_SPD){ball.vx=ball.vx/spd*MAX_BALL_SPD;ball.vy=ball.vy/spd*MAX_BALL_SPD;}
+        ball.x=p.x+Math.cos(ang)*(p.r+ball.r+2); ball.y=p.y+Math.sin(ang)*(p.r+ball.r+2);
+      }
+    }
+
+    // Рендер игрока
+    let frozen=botsFrozen||(enemyFrozen&&p.t===2);
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx.fillStyle=p.t===1?'#0066ff':'#ff3333'; ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.stroke();
+    ctx.font=Math.round(p.r*0.85)+'px Arial'; ctx.textAlign='center'; ctx.fillText(frozen?'🥶':p.e,p.x,p.y+p.r*0.33);
+    ctx.font='14px Arial'; ctx.fillStyle='#fff'; ctx.fillText(p.nick,p.x,p.y-p.r-8);
+    if(p.pinTimer>0){
+      ctx.fillStyle='white'; ctx.beginPath(); ctx.roundRect(p.x-35,p.y-p.r-70,70,50,10); ctx.fill();
+      ctx.font='32px Arial'; ctx.fillStyle='black'; ctx.fillText(p.activePin,p.x,p.y-p.r-35);
+      p.pinTimer--;
+    }
+  });
+
+  // Синхронизация
+  let now=Date.now();
+  if(now-lastPos>POS_MS) {
+    lastPos=now;
+    let me=pList.find(x=>x.isMe);
+    if(me&&roomRef) roomRef.child('positions/'+curUser).set({x:Math.round(me.x),y:Math.round(me.y)});
+    if(isHost) {
+      pList.filter(p=>p.isBot).forEach(p=>roomRef.child('positions/'+p.id).set({x:Math.round(p.x),y:Math.round(p.y)}));
+      if(now-lastBall>BALL_MS) {
+        lastBall=now;
+        roomRef.child('state/ball').set({x:Math.round(ball.x*10)/10,y:Math.round(ball.y*10)/10,vx:Math.round(ball.vx*100)/100,vy:Math.round(ball.vy*100)/100});
+      }
+    }
+  }
+
+  // Шайба
+  ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);
+  ctx.fillStyle='#111'; ctx.fill(); ctx.strokeStyle='#444'; ctx.lineWidth=3; ctx.stroke();
+
+  document.getElementById('sc1').innerText=score[0];
+  document.getElementById('sc2').innerText=score[1];
+  requestAnimationFrame(gameLoop);
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+//   КОНЕЦ МАТЧА
+// ╚══════════════════════════════════════════════════════════════╝
+function endMatch() {
+  if(!isHost) return;
+  inGame=false;
+  roomRef.child('state').update({status:'ended',score:[...score]});
+  handleMatchEnd();
+}
+
+function handleMatchEnd() {
+  inGame=false;
+  leaveRoom();
+  let myP=pList.find(x=>x.isMe);
+  let myT=myP?myP.t:1;
+  let myS=myT===1?score[0]:score[1], enS=myT===1?score[1]:score[0];
+  let res=myS>enS?1:(enS>myS?-1:0);
+  let cp=res===1?15:(res===-1?-10:0), mp=res===1?Math.floor(Math.random()*10)+5:0;
+  let ac=CHARS[uData.selected].n, cc=uData.charCups[ac]||0;
+  db.ref('accounts/'+curUser+'/charCups').update({[ac]:Math.max(0,cc+cp)});
+  db.ref('accounts/'+curUser).update({coins:uData.coins+mp});
+  document.getElementById('res-title').innerText=res===1?'ПОБЕДА!':(res===-1?'ПОРАЖЕНИЕ':'НИЧЬЯ');
+  document.getElementById('res-stats').innerText=(cp>0?'+':'')+cp+' 🏆 | '+mp+' 💰';
+  document.getElementById('mod-result').style.display='flex';
+}
+
+function onResultClose() {
+  document.getElementById('mod-result').style.display='none';
+  leaveRoom();
+  renderLobby();
+}
+
+function leaveRoom() {
+  roomListeners.forEach(fn=>fn()); roomListeners=[];
+  if(roomRef) roomRef.child('players/'+curUser+'/online').set(false);
+  roomId=null; roomRef=null;
+  localStorage.removeItem('activeRoomId');
+}
+</script>
+</body>
+</html>
